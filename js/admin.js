@@ -235,6 +235,9 @@ window.selectTournament = async function(tournamentId) {
             </div>
         `
 
+        // Сохраняем ID текущего матча для обновления списка голов
+        window.currentMatchId = data[0]?.id || null
+
     } catch (error) {
         console.error('Ошибка:', error)
         container.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
@@ -242,7 +245,7 @@ window.selectTournament = async function(tournamentId) {
 }
 
 // ================================================================
-// РЕДАКТИРОВАНИЕ ИГРОКА
+// РЕДАКТИРОВАНИЕ ИГРОКА (ИСПРАВЛЕНО)
 // ================================================================
 
 window.editPlayer = function(id, currentName) {
@@ -251,7 +254,7 @@ window.editPlayer = function(id, currentName) {
     document.getElementById('modalTitle').textContent = '✏️ Редактировать игрока'
 
     content.innerHTML = `
-        <form onsubmit="updatePlayer(event, '${id}')">
+        <form id="editPlayerForm">
             <div style="margin-bottom:16px;">
                 <label style="display:block;color:#7a8399;margin-bottom:6px;">Имя игрока</label>
                 <input type="text" id="editPlayerName" value="${currentName}" required style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
@@ -263,30 +266,41 @@ window.editPlayer = function(id, currentName) {
     `
 
     modal.style.display = 'flex'
-}
 
-window.updatePlayer = async function(e, id) {
-    e.preventDefault()
-    const name = document.getElementById('editPlayerName').value.trim()
+    document.getElementById('editPlayerForm').onsubmit = async function(e) {
+        e.preventDefault()
+        
+        const name = document.getElementById('editPlayerName').value.trim()
+        if (!name) {
+            alert('Введите имя игрока')
+            return
+        }
 
-    if (!name) {
-        alert('Введите имя игрока')
-        return
-    }
+        console.log('🔄 Обновляем игрока:', { id, name })
 
-    try {
-        const { error } = await supabase
-            .from('players')
-            .update({ name })
-            .eq('id', id)
+        try {
+            const { data, error } = await supabase
+                .from('players')
+                .update({ name: name })
+                .eq('id', id)
+                .select()
 
-        if (error) throw error
+            if (error) {
+                console.error('❌ Ошибка Supabase:', error)
+                alert('Ошибка: ' + error.message)
+                return
+            }
 
-        closeModal()
-        loadPlayers()
-        alert('✅ Игрок обновлен!')
-    } catch (error) {
-        alert('❌ Ошибка: ' + error.message)
+            console.log('✅ Игрок обновлен:', data)
+
+            closeModal()
+            await loadPlayers()
+            alert('✅ Игрок обновлен!')
+            
+        } catch (error) {
+            console.error('❌ Ошибка:', error)
+            alert('❌ Ошибка: ' + error.message)
+        }
     }
 }
 
@@ -396,7 +410,7 @@ window.updateTournament = async function(e, id) {
 
 window.editMatch = async function(id) {
     // Получаем данные матча
-    const { data, error } = await supabase
+    const { data: match, error: matchError } = await supabase
         .from('matches')
         .select(`
             *,
@@ -406,14 +420,10 @@ window.editMatch = async function(id) {
         .eq('id', id)
         .single()
 
-    if (error) {
-        alert('Ошибка загрузки данных: ' + error.message)
+    if (matchError) {
+        alert('Ошибка загрузки данных: ' + matchError.message)
         return
     }
-
-    const modal = document.getElementById('modal')
-    const content = document.getElementById('modalContent')
-    document.getElementById('modalTitle').textContent = `✏️ Редактировать матч: ${data.team_a?.name} vs ${data.team_b?.name}`
 
     // Получаем список игроков для выбора гола
     const { data: players, error: playersError } = await supabase
@@ -422,7 +432,7 @@ window.editMatch = async function(id) {
         .order('name')
 
     if (playersError) {
-        alert('Ошибка загрузки игроков')
+        alert('Ошибка загрузки игроков: ' + playersError.message)
         return
     }
 
@@ -430,37 +440,41 @@ window.editMatch = async function(id) {
         `<option value="${p.id}">${p.name}</option>`
     ).join('')
 
+    const modal = document.getElementById('modal')
+    const content = document.getElementById('modalContent')
+    document.getElementById('modalTitle').textContent = `✏️ Редактировать матч: ${match.team_a?.name} vs ${match.team_b?.name}`
+
     content.innerHTML = `
-        <form onsubmit="updateMatch(event, '${id}')">
+        <form id="editMatchForm">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
                 <div>
-                    <label style="display:block;color:#7a8399;margin-bottom:6px;">${data.team_a?.name || '?'}</label>
-                    <input type="number" id="editScoreA" value="${data.score_a}" min="0" max="20" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;font-size:20px;text-align:center;">
+                    <label style="display:block;color:#7a8399;margin-bottom:6px;">${match.team_a?.name || '?'}</label>
+                    <input type="number" id="editScoreA" value="${match.score_a}" min="0" max="20" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;font-size:20px;text-align:center;">
                 </div>
                 <div>
-                    <label style="display:block;color:#7a8399;margin-bottom:6px;">${data.team_b?.name || '?'}</label>
-                    <input type="number" id="editScoreB" value="${data.score_b}" min="0" max="20" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;font-size:20px;text-align:center;">
+                    <label style="display:block;color:#7a8399;margin-bottom:6px;">${match.team_b?.name || '?'}</label>
+                    <input type="number" id="editScoreB" value="${match.score_b}" min="0" max="20" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;font-size:20px;text-align:center;">
                 </div>
             </div>
             
             <div style="margin-bottom:16px;">
-                <label style="display:block;color:#7a8399;margin-bottom:6px;">Статус</label>
+                <label style="display:block;color:#7a8399;margin-bottom:6px;">Статус матча</label>
                 <select id="editMatchStatus" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-                    <option value="scheduled" ${data.status === 'scheduled' ? 'selected' : ''}>📅 Запланирован</option>
-                    <option value="live" ${data.status === 'live' ? 'selected' : ''}>🟢 Идет</option>
-                    <option value="finished" ${data.status === 'finished' ? 'selected' : ''}>✅ Завершен</option>
+                    <option value="scheduled" ${match.status === 'scheduled' ? 'selected' : ''}>📅 Запланирован</option>
+                    <option value="live" ${match.status === 'live' ? 'selected' : ''}>🟢 Идет</option>
+                    <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>✅ Завершен</option>
                 </select>
             </div>
 
             <div style="margin-bottom:16px;padding:12px;background:rgba(255,215,0,0.05);border-radius:8px;">
-                <label style="display:block;color:#7a8399;margin-bottom:6px;">⚽ Добавить гол (кто забил):</label>
+                <label style="display:block;color:#7a8399;margin-bottom:6px;">⚽ Добавить гол</label>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                     <select id="goalPlayer" style="width:100%;padding:8px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-                        <option value="">— Выберите игрока —</option>
+                        <option value="">— Кто забил —</option>
                         ${playerOptions}
                     </select>
                     <select id="goalAssist" style="width:100%;padding:8px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-                        <option value="">— Ассистент (опционально) —</option>
+                        <option value="">— Ассистент —</option>
                         ${playerOptions}
                     </select>
                 </div>
@@ -468,7 +482,7 @@ window.editMatch = async function(id) {
             </div>
 
             <div id="matchGoalsList" style="margin-bottom:16px;">
-                <!-- Список голов будет загружен -->
+                <div style="color:#7a8399;font-size:13px;">Загрузка голов...</div>
             </div>
 
             <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
@@ -481,6 +495,50 @@ window.editMatch = async function(id) {
 
     // Загружаем голы для матча
     loadMatchGoals(id)
+
+    // Обработчик формы
+    document.getElementById('editMatchForm').onsubmit = async function(e) {
+        e.preventDefault()
+        
+        const score_a = parseInt(document.getElementById('editScoreA').value) || 0
+        const score_b = parseInt(document.getElementById('editScoreB').value) || 0
+        const status = document.getElementById('editMatchStatus').value
+
+        console.log('🔄 Обновляем матч:', { id, score_a, score_b, status })
+
+        try {
+            const { data, error } = await supabase
+                .from('matches')
+                .update({ 
+                    score_a: score_a, 
+                    score_b: score_b, 
+                    status: status 
+                })
+                .eq('id', id)
+                .select()
+
+            if (error) {
+                console.error('❌ Ошибка Supabase:', error)
+                alert('Ошибка: ' + error.message)
+                return
+            }
+
+            console.log('✅ Матч обновлен:', data)
+
+            closeModal()
+            
+            // Обновляем список матчей
+            if (currentTournamentId) {
+                await selectTournament(currentTournamentId)
+            }
+            
+            alert('✅ Матч обновлен!')
+            
+        } catch (error) {
+            console.error('❌ Ошибка:', error)
+            alert('❌ Ошибка: ' + error.message)
+        }
+    }
 }
 
 async function loadMatchGoals(matchId) {
@@ -499,7 +557,7 @@ async function loadMatchGoals(matchId) {
         if (error) throw error
 
         if (!data || data.length === 0) {
-            container.innerHTML = '<div style="color:#7a8399;font-size:13px;">Голов пока нет</div>'
+            container.innerHTML = '<div style="color:#7a8399;font-size:13px;">⚽ Голов пока нет</div>'
             return
         }
 
@@ -528,16 +586,25 @@ window.addGoalToMatch = async function(matchId) {
         return
     }
 
+    console.log('🔄 Добавляем гол:', { matchId, playerId, assistId })
+
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('goals')
             .insert({
                 match_id: matchId,
                 player_id: playerId,
                 assist_id: assistId || null
             })
+            .select()
 
-        if (error) throw error
+        if (error) {
+            console.error('❌ Ошибка Supabase:', error)
+            alert('Ошибка: ' + error.message)
+            return
+        }
+
+        console.log('✅ Гол добавлен:', data)
 
         alert('✅ Гол добавлен!')
         loadMatchGoals(matchId)
@@ -547,6 +614,7 @@ window.addGoalToMatch = async function(matchId) {
         document.getElementById('goalAssist').value = ''
 
     } catch (error) {
+        console.error('❌ Ошибка:', error)
         alert('❌ Ошибка: ' + error.message)
     }
 }
@@ -554,13 +622,21 @@ window.addGoalToMatch = async function(matchId) {
 window.deleteGoal = async function(id) {
     if (!confirm('Удалить гол?')) return
     
+    console.log('🔄 Удаляем гол:', id)
+
     try {
         const { error } = await supabase
             .from('goals')
             .delete()
             .eq('id', id)
 
-        if (error) throw error
+        if (error) {
+            console.error('❌ Ошибка Supabase:', error)
+            alert('Ошибка: ' + error.message)
+            return
+        }
+
+        console.log('✅ Гол удален')
 
         alert('✅ Гол удален')
         // Перезагружаем список голов для текущего матча
@@ -568,6 +644,7 @@ window.deleteGoal = async function(id) {
         if (matchId) loadMatchGoals(matchId)
 
     } catch (error) {
+        console.error('❌ Ошибка:', error)
         alert('❌ Ошибка: ' + error.message)
     }
 }
