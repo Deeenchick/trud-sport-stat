@@ -344,6 +344,7 @@ window.editTournament = async function(id) {
 
 window.updateTournament = async function(e, id) {
     e.preventDefault()
+    
     const name = document.getElementById('editTournamentName').value.trim()
     const date = document.getElementById('editTournamentDate').value
     const time = document.getElementById('editTournamentTime').value
@@ -355,17 +356,36 @@ window.updateTournament = async function(e, id) {
     }
 
     try {
-        const { error } = await supabase
-            .from('tournaments')
-            .update({ name, date, time, status })
-            .eq('id', id)
+        console.log('🔄 Обновляем турнир:', { id, name, date, time, status })
 
-        if (error) throw error
+        const { data, error } = await supabase
+            .from('tournaments')
+            .update({ 
+                name: name, 
+                date: date, 
+                time: time, 
+                status: status 
+            })
+            .eq('id', id)
+            .select()
+
+        if (error) {
+            console.error('❌ Ошибка Supabase:', error)
+            alert('Ошибка: ' + error.message)
+            return
+        }
+
+        console.log('✅ Турнир обновлен:', data)
 
         closeModal()
-        loadTournaments()
+        
+        // Принудительно перезагружаем список турниров
+        await loadTournaments()
+        
         alert('✅ Турнир обновлен!')
+        
     } catch (error) {
+        console.error('❌ Ошибка:', error)
         alert('❌ Ошибка: ' + error.message)
     }
 }
