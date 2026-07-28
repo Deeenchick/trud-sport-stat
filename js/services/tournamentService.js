@@ -59,27 +59,29 @@ export const tournamentService = {
     // ================================================================
     // ПОЛУЧИТЬ МАТЧИ ТУРНИРА (БЕЗ STATUS - ИСПРАВЛЕНО)
     // ================================================================
-    async getMatches(tournamentId) {
-        const { data, error } = await supabase
-            .from('matches')
-            .select(`
-                id,
-                tournament_id,
-                team_a_id,
-                team_b_id,
-                score_a,
-                score_b,
-                round,
-                match_order,
-                team_a:team_a_id (id, name),
-                team_b:team_b_id (id, name)
-            `)
-            .eq('tournament_id', tournamentId)
-            .order('match_order')
+async getMatches(tournamentId) {
+    const { data, error } = await supabase
+        .from('matches')
+        .select(`
+            id,
+            tournament_id,
+            team_a_id,
+            team_b_id,
+            score_a,
+            score_b,
+            round,
+            match_order,
+            created_at,
+            updated_at,
+            team_a:team_a_id (id, name),
+            team_b:team_b_id (id, name)
+        `)
+        .eq('tournament_id', tournamentId)
+        .order('match_order')
 
-        if (error) throw error
-        return data
-    },
+    if (error) throw error
+    return data
+},
 
     // Получить голы матча
     async getMatchGoals(matchId) {
