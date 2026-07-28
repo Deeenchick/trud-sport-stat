@@ -710,16 +710,25 @@ window.addPlayer = async function(e) {
     }
 
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('players')
             .insert({ name })
+            .select()
 
-        if (error) throw error
+        if (error) {
+            console.error('❌ Ошибка Supabase:', error)
+            alert('Ошибка: ' + error.message)
+            return
+        }
+
+        console.log('✅ Игрок добавлен:', data)
 
         closeModal()
-        loadPlayers()
+        await loadPlayers()
         alert('✅ Игрок добавлен!')
+        
     } catch (error) {
+        console.error('❌ Ошибка:', error)
         alert('❌ Ошибка: ' + error.message)
     }
 }
