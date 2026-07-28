@@ -8,71 +8,57 @@ import { tournamentService } from './services/tournamentService.js'
 import { statsService } from './services/statsService.js'
 
 // ================================================================
-// СОСТОЯНИЕ ПРИЛОЖЕНИЯ
+// ГЛОБАЛЬНОЕ СОСТОЯНИЕ
 // ================================================================
 
 const state = {
-    currentPage: 'tournaments',
     tournaments: [],
     players: [],
     stats: [],
     currentTournamentId: null,
-    isLoading: false
+    isLoaded: false
 }
 
 // ================================================================
 // НАВИГАЦИЯ
 // ================================================================
 
+function switchPage(pageId) {
+    // Скрываем все страницы
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
+    
+    // Показываем нужную
+    document.getElementById(`page-${pageId}`).classList.add('active')
+    
+    // Обновляем кнопки
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
+    document.querySelector(`.nav-btn[data-page="${pageId}"]`).classList.add('active')
+}
+
+// Обработчики навигации
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', function() {
-        // Обновляем активную кнопку
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
-        this.classList.add('active')
-
-        // Получаем ID страницы
         const pageId = this.dataset.page
-        state.currentPage = pageId
-
-        // Скрываем все страницы
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
-        
-        // Показываем нужную страницу
-        const pageElement = document.getElementById(`page-${pageId}`)
-        pageElement.classList.add('active')
-
-        // Загружаем данные для страницы
-        switch (pageId) {
-            case 'tournaments':
-                renderTournaments()
-                break
-            case 'stats':
-                renderStats()
-                break
-            case 'tops':
-                renderTops()
-                break
-            case 'profile':
-                renderPlayers()
-                break
-        }
-
+        switchPage(pageId)
         window.scrollTo({ top: 0, behavior: 'smooth' })
     })
 })
 
 // ================================================================
-// СТРАНИЦА: ТУРНИРЫ
+// РЕНДЕРИНГ ТУРНИРОВ (С СОХРАНЕНИЕМ)
 // ================================================================
 
-async function renderTournaments() {
+function renderTournaments() {
     const container = document.getElementById('page-tournaments')
+    const savedHTML = container.dataset.savedHTML
 
-    // Если уже есть данные и страница не перезагружается
-    if (state.tournaments.length > 0 && container.innerHTML.includes('tournament-item')) {
+    // Если уже есть сохраненный HTML — используем его
+    if (savedHTML && savedHTML.includes('tournament-item')) {
+        container.innerHTML = savedHTML
         return
     }
 
+    // Иначе рендерим
     container.innerHTML = `
         <div class="section-title">
             <i class="fas fa-calendar-alt"></i> Лента турниров
@@ -84,12 +70,18 @@ async function renderTournaments() {
         <div id="tournamentDetail" style="display:none;"></div>
     `
 
+    // Загружаем данные
+    loadTournamentsData()
+}
+
+async function loadTournamentsData() {
+    const container = document.getElementById('page-tournaments')
+    const listContainer = document.getElementById('tournamentList')
+    const countEl = document.getElementById('tournamentsCount')
+
     try {
         const tournaments = await tournamentService.getAll()
         state.tournaments = tournaments
-
-        const listContainer = document.getElementById('tournamentList')
-        const countEl = document.getElementById('tournamentsCount')
 
         if (!tournaments || tournaments.length === 0) {
             listContainer.innerHTML = '<div class="empty">Нет турниров</div>'
@@ -110,24 +102,32 @@ async function renderTournaments() {
             </div>
         `).join('')
 
+        // Сохраняем HTML в dataset
+        container.dataset.savedHTML = container.innerHTML
+
         // Сохраняем функцию в window
         window.showTournamentDetail = showTournamentDetail
 
     } catch (error) {
         console.error('Ошибка загрузки турниров:', error)
-        document.getElementById('tournamentList').innerHTML = 
-            `<div class="error">Ошибка: ${error.message}</div>`
-        document.getElementById('tournamentsCount').textContent = 'ошибка'
+        listContainer.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
+        countEl.textContent = 'ошибка'
     }
 }
 
+// ================================================================
+// ДЕТАЛИ ТУРНИРА
+// ================================================================
+
 async function showTournamentDetail(tournamentId) {
     const detailContainer = document.getElementById('tournamentDetail')
+    const container = document.getElementById('page-tournaments')
     
-    // Если уже открыт этот турнир, скрываем
+    // Если уже открыт этот турнир — закрываем
     if (state.currentTournamentId === tournamentId && detailContainer.style.display !== 'none') {
         detailContainer.style.display = 'none'
         state.currentTournamentId = null
+        container.dataset.savedHTML = container.innerHTML
         return
     }
 
@@ -144,6 +144,9 @@ async function showTournamentDetail(tournamentId) {
         </div>
     `
 
+    // Сохраняем состояние
+    container.dataset.savedHTML = container.innerHTML
+
     try {
         const tournament = await tournamentService.getById(tournamentId)
         const table = await tournamentService.getTable(tournamentId)
@@ -153,7 +156,6 @@ async function showTournamentDetail(tournamentId) {
 
         let html = ''
 
-        // Турнирная таблица
         if (table && table.length > 0) {
             const winner = table.find(row => row.place === 1)
             html += `
@@ -188,7 +190,6 @@ async function showTournamentDetail(tournamentId) {
             `
         }
 
-        // Матчи
         if (matches && matches.length > 0) {
             html += `
                 <h4 style="margin:12px 0 8px;color:#b0baca;">Матчи</h4>
@@ -209,25 +210,27 @@ async function showTournamentDetail(tournamentId) {
 
     } catch (error) {
         console.error('Ошибка загрузки деталей:', error)
-        document.getElementById('detailContent').innerHTML = 
-            `<div class="error">Ошибка: ${error.message}</div>`
+        document.getElementById('detailContent').innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
     }
 }
 
 function closeTournamentDetail() {
+    const container = document.getElementById('page-tournaments')
     document.getElementById('tournamentDetail').style.display = 'none'
     state.currentTournamentId = null
+    container.dataset.savedHTML = container.innerHTML
 }
 
 // ================================================================
-// СТРАНИЦА: СТАТИСТИКА
+// РЕНДЕРИНГ СТАТИСТИКИ
 // ================================================================
 
-async function renderStats() {
+function renderStats() {
     const container = document.getElementById('page-stats')
+    const savedHTML = container.dataset.savedHTML
 
-    // Если данные уже загружены и отображаются
-    if (state.players.length > 0 && container.querySelector('.stats-table tbody tr')) {
+    if (savedHTML && savedHTML.includes('stats-table')) {
+        container.innerHTML = savedHTML
         return
     }
 
@@ -259,12 +262,17 @@ async function renderStats() {
         </div>
     `
 
+    loadStatsData()
+}
+
+async function loadStatsData() {
+    const container = document.getElementById('page-stats')
+    const tbody = document.getElementById('statsBody')
+    const countEl = document.getElementById('statsCount')
+
     try {
         const players = await statsService.getAllPlayersStats()
         state.players = players
-
-        const tbody = document.getElementById('statsBody')
-        const countEl = document.getElementById('statsCount')
 
         if (!players || players.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="empty">Нет игроков</td></tr>'
@@ -273,8 +281,6 @@ async function renderStats() {
         }
 
         countEl.textContent = `${players.length} игроков`
-
-        // Сортируем по PEI
         players.sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
 
         tbody.innerHTML = players.map(p => {
@@ -295,23 +301,25 @@ async function renderStats() {
             `
         }).join('')
 
+        container.dataset.savedHTML = container.innerHTML
+
     } catch (error) {
         console.error('Ошибка загрузки статистики:', error)
-        document.getElementById('statsBody').innerHTML = 
-            `<tr><td colspan="8" class="error">Ошибка: ${error.message}</td></tr>`
-        document.getElementById('statsCount').textContent = 'ошибка'
+        tbody.innerHTML = `<tr><td colspan="8" class="error">Ошибка: ${error.message}</td></tr>`
+        countEl.textContent = 'ошибка'
     }
 }
 
 // ================================================================
-// СТРАНИЦА: ТОПы
+// РЕНДЕРИНГ ТОПОВ
 // ================================================================
 
-async function renderTops() {
+function renderTops() {
     const container = document.getElementById('page-tops')
+    const savedHTML = container.dataset.savedHTML
 
-    // Если данные уже загружены
-    if (state.stats.length > 0 && container.querySelector('.hall-card')) {
+    if (savedHTML && savedHTML.includes('hall-card')) {
+        container.innerHTML = savedHTML
         return
     }
 
@@ -332,36 +340,41 @@ async function renderTops() {
         </div>
     `
 
+    loadTopsData()
+}
+
+async function loadTopsData() {
+    const container = document.getElementById('page-tops')
+    const hallContainer = document.getElementById('hallOfFame')
+    const scorersContainer = document.getElementById('topScorersList')
+    const ratingContainer = document.getElementById('topRatingList')
+
     try {
         const players = await statsService.getAllPlayersStats()
         state.stats = players
 
         if (!players || players.length === 0) {
-            document.getElementById('hallOfFame').innerHTML = '<div class="empty" style="grid-column:1/-1;">Нет игроков</div>'
-            document.getElementById('topScorersList').innerHTML = '<div class="empty">Нет данных</div>'
-            document.getElementById('topRatingList').innerHTML = '<div class="empty">Нет данных</div>'
+            hallContainer.innerHTML = '<div class="empty" style="grid-column:1/-1;">Нет игроков</div>'
+            scorersContainer.innerHTML = '<div class="empty">Нет данных</div>'
+            ratingContainer.innerHTML = '<div class="empty">Нет данных</div>'
             return
         }
 
-        // Топ-10 по голам
         const topScorers = [...players]
             .sort((a, b) => (b.total_goals || 0) - (a.total_goals || 0))
             .slice(0, 10)
 
-        // Топ-10 по PEI
         const topRating = [...players]
             .sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
             .slice(0, 10)
 
         // Зал славы
-        const hallOfFame = [
+        hallContainer.innerHTML = [
             { icon: '🥇', name: topScorers[0]?.name || '—', desc: 'Лучший бомбардир', value: `${topScorers[0]?.total_goals || 0} голов` },
             { icon: '👑', name: topRating[0]?.name || '—', desc: 'Лучший PEI', value: `${(topRating[0]?.current_rating || 0).toFixed(2)}` },
             { icon: '⚡', name: topScorers[1]?.name || '—', desc: '2-й бомбардир', value: `${topScorers[1]?.total_goals || 0} голов` },
             { icon: '🏅', name: topRating[1]?.name || '—', desc: '2-й по PEI', value: `${(topRating[1]?.current_rating || 0).toFixed(2)}` }
-        ]
-
-        document.getElementById('hallOfFame').innerHTML = hallOfFame.map(h => `
+        ].map(h => `
             <div class="hall-card">
                 <div class="hall-icon">${h.icon}</div>
                 <div class="hall-name">${h.name}</div>
@@ -371,7 +384,7 @@ async function renderTops() {
         `).join('')
 
         // ТОП-10 бомбардиров
-        document.getElementById('topScorersList').innerHTML = topScorers.map((p, i) => `
+        scorersContainer.innerHTML = topScorers.map((p, i) => `
             <div class="top-row">
                 <span class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
                 <span class="top-name">${p.name}</span>
@@ -380,7 +393,7 @@ async function renderTops() {
         `).join('')
 
         // ТОП-10 по PEI
-        document.getElementById('topRatingList').innerHTML = topRating.map((p, i) => `
+        ratingContainer.innerHTML = topRating.map((p, i) => `
             <div class="top-row">
                 <span class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
                 <span class="top-name">${p.name}</span>
@@ -388,20 +401,24 @@ async function renderTops() {
             </div>
         `).join('')
 
+        container.dataset.savedHTML = container.innerHTML
+
     } catch (error) {
         console.error('Ошибка загрузки ТОПов:', error)
+        hallContainer.innerHTML = `<div class="error" style="grid-column:1/-1;">Ошибка: ${error.message}</div>`
     }
 }
 
 // ================================================================
-// СТРАНИЦА: ПРОФИЛЬ ИГРОКОВ
+// РЕНДЕРИНГ ПРОФИЛЕЙ
 // ================================================================
 
-async function renderPlayers() {
+function renderPlayers() {
     const container = document.getElementById('page-profile')
+    const savedHTML = container.dataset.savedHTML
 
-    // Если данные уже загружены
-    if (state.players.length > 0 && container.querySelector('.player-card')) {
+    if (savedHTML && savedHTML.includes('player-card')) {
+        container.innerHTML = savedHTML
         return
     }
 
@@ -417,11 +434,16 @@ async function renderPlayers() {
         </div>
     `
 
+    loadPlayersData()
+}
+
+async function loadPlayersData() {
+    const container = document.getElementById('page-profile')
+    const grid = document.getElementById('playerGrid')
+    const countEl = document.getElementById('playersCount')
+
     try {
         const players = await statsService.getAllPlayersStats()
-
-        const grid = document.getElementById('playerGrid')
-        const countEl = document.getElementById('playersCount')
 
         if (!players || players.length === 0) {
             grid.innerHTML = '<div class="empty" style="grid-column:1/-1;">Нет игроков</div>'
@@ -430,8 +452,6 @@ async function renderPlayers() {
         }
 
         countEl.textContent = `${players.length} игроков`
-
-        // Сортируем по PEI
         players.sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
 
         grid.innerHTML = players.map(p => {
@@ -446,54 +466,42 @@ async function renderPlayers() {
             `
         }).join('')
 
+        container.dataset.savedHTML = container.innerHTML
+
     } catch (error) {
         console.error('Ошибка загрузки игроков:', error)
-        document.getElementById('playerGrid').innerHTML = 
-            `<div class="error" style="grid-column:1/-1;">Ошибка: ${error.message}</div>`
-        document.getElementById('playersCount').textContent = 'ошибка'
+        grid.innerHTML = `<div class="error" style="grid-column:1/-1;">Ошибка: ${error.message}</div>`
+        countEl.textContent = 'ошибка'
     }
 }
 
 // ================================================================
-// ПЕРЕКЛЮЧЕНИЕ СТРАНИЦ (исправленное)
+// ОБНОВЛЕННАЯ НАВИГАЦИЯ С СОХРАНЕНИЕМ
 // ================================================================
 
-// Переопределяем обработчики навигации для сохранения контента
+// Переопределяем обработчики
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', function() {
-        // Обновляем активную кнопку
+        const pageId = this.dataset.page
+
+        // Обновляем кнопки
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
         this.classList.add('active')
 
-        // Получаем ID страницы
-        const pageId = this.dataset.page
-        
         // Скрываем все страницы
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
-        
-        // Показываем нужную страницу
+
+        // Показываем нужную
         const pageElement = document.getElementById(`page-${pageId}`)
         pageElement.classList.add('active')
 
-        // Загружаем данные только если страница пустая или обновляем принудительно
-        const isEmpty = pageElement.querySelector('.loading') || 
-                        pageElement.querySelector('.empty') || 
-                        !pageElement.querySelector('.card')
-        
-        if (isEmpty || pageId === 'tournaments') {
+        // Загружаем данные, если страница пустая
+        if (!pageElement.dataset.savedHTML || !pageElement.dataset.savedHTML.includes('card')) {
             switch (pageId) {
-                case 'tournaments':
-                    renderTournaments()
-                    break
-                case 'stats':
-                    renderStats()
-                    break
-                case 'tops':
-                    renderTops()
-                    break
-                case 'profile':
-                    renderPlayers()
-                    break
+                case 'tournaments': renderTournaments(); break
+                case 'stats': renderStats(); break
+                case 'tops': renderTops(); break
+                case 'profile': renderPlayers(); break
             }
         }
 
@@ -505,8 +513,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 // ЗАПУСК
 // ================================================================
 
-// Загружаем первую страницу (турниры) при старте
+// Загружаем первую страницу
 renderTournaments()
 
 console.log('✅ СпортСтат приложение загружено!')
-console.log('📊 Подключено к Supabase')
