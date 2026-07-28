@@ -1,6 +1,6 @@
 // js/services/tournamentService.js
 // ================================================================
-// СЕРВИС ДЛЯ РАБОТЫ С ТУРНИРАМИ
+// СЕРВИС ДЛЯ РАБОТЫ С ТУРНИРАМИ (БЕЗ STATUS В МАТЧАХ)
 // ================================================================
 
 import { supabase } from '../supabase.js'
@@ -56,12 +56,21 @@ export const tournamentService = {
         return data
     },
 
-    // Получить матчи турнира
+    // ================================================================
+    // ПОЛУЧИТЬ МАТЧИ ТУРНИРА (БЕЗ STATUS - ИСПРАВЛЕНО)
+    // ================================================================
     async getMatches(tournamentId) {
         const { data, error } = await supabase
             .from('matches')
             .select(`
-                *,
+                id,
+                tournament_id,
+                team_a_id,
+                team_b_id,
+                score_a,
+                score_b,
+                round,
+                match_order,
                 team_a:team_a_id (id, name),
                 team_b:team_b_id (id, name)
             `)
@@ -143,17 +152,5 @@ export const tournamentService = {
 
         if (error) throw error
         return true
-    },
-
-    // Получить все матчи турнира с результатами
-    async getMatchesWithResults(tournamentId) {
-        const matches = await this.getMatches(tournamentId)
-
-        for (const match of matches) {
-            const goals = await this.getMatchGoals(match.id)
-            match.goals = goals
-        }
-
-        return matches
     }
 }
