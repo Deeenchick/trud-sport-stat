@@ -10,12 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <style>
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         .btn-gold {
             background: #ffd700;
             color: #0b0e12;
@@ -27,9 +23,7 @@
             font-size: 14px;
             transition: 0.2s;
         }
-        .btn-gold:hover {
-            transform: scale(1.05);
-        }
+        .btn-gold:hover { transform: scale(1.05); }
         .btn-danger {
             background: #e85a5a;
             color: white;
@@ -95,6 +89,23 @@
             width: 18px;
             height: 18px;
             cursor: pointer;
+        }
+        .match-score-display {
+            font-size: 28px;
+            font-weight: 900;
+            color: #ffd700;
+        }
+        .status-badge.status-completed {
+            background: #0f2a1a;
+            color: #5dca8a;
+        }
+        .status-badge.status-live {
+            background: #2a1f0a;
+            color: #f5a623;
+        }
+        .status-badge.status-scheduled {
+            background: #1a1f2a;
+            color: #5a7a9a;
         }
     </style>
 </head>
