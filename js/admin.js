@@ -774,16 +774,25 @@ window.selectTournament = async function(tournamentId) {
 // ================================================================
 
 window.editMatch = async function(id) {
-const { data: match, error: matchError } = await supabase
-    .from('matches')
-    .select(`
-        *,
-        team_a:team_a_id (id, name),
-        team_b:team_b_id (id, name),
-        tournament:tournament_id (id, status)
-    `)
-    .eq('id', id)
-    .single()
+    const { data: match, error: matchError } = await supabase
+        .from('matches')
+        .select(`
+            id,
+            tournament_id,
+            team_a_id,
+            team_b_id,
+            score_a,
+            score_b,
+            round,
+            match_order,
+            created_at,
+            updated_at,
+            team_a:team_a_id (id, name),
+            team_b:team_b_id (id, name),
+            tournament:tournament_id (id, status)
+        `)
+        .eq('id', id)
+        .single()
 
     if (matchError) {
         alert('Ошибка загрузки данных: ' + matchError.message)
@@ -842,12 +851,10 @@ const { data: match, error: matchError } = await supabase
     const content = document.getElementById('modalContent')
     document.getElementById('modalTitle').textContent = `✏️ Редактировать матч: ${match.team_a?.name} vs ${match.team_b?.name}`
 
-    // Получаем статус турнира
     const tournamentStatus = match.tournament?.status || 'scheduled'
 
     content.innerHTML = `
         <form id="editMatchForm">
-            <!-- Счет -->
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;text-align:center;padding:16px;background:rgba(255,215,0,0.05);border-radius:12px;">
                 <div>
                     <div style="color:#7a8399;font-size:12px;">${match.team_a?.name || '?'}</div>
@@ -863,7 +870,6 @@ const { data: match, error: matchError } = await supabase
                 </div>
             </div>
 
-            <!-- Статус турнира (информация) -->
             <div style="margin-bottom:16px;padding:12px;background:rgba(255,215,0,0.03);border-radius:8px;text-align:center;color:#7a8399;font-size:14px;">
                 Статус турнира: <strong style="color:#ffd700;">${tournamentStatus === 'scheduled' ? '📅 Запланирован' : tournamentStatus === 'live' ? '🟢 Идет' : '✅ Завершен'}</strong>
                 ${tournamentStatus === 'completed' ? ' (редактирование заблокировано)' : ''}
