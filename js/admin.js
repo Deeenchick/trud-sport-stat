@@ -714,11 +714,22 @@ window.selectTournament = async function(tournamentId) {
     }
 
     try {
-        const { data, error } = await supabase
-            .from('matches')
-            .select(`*, team_a:team_a_id (id, name), team_b:team_b_id (id, name)`)
-            .eq('tournament_id', tournamentId)
-            .order('match_order')
+    const { data, error } = await supabase
+        .from('matches')
+        .select(`
+            id,
+            tournament_id,
+            team_a_id,
+            team_b_id,
+            score_a,
+            score_b,
+            round,
+            match_order,
+            team_a:team_a_id (id, name),
+            team_b:team_b_id (id, name)
+        `)
+        .eq('tournament_id', tournamentId)
+        .order('match_order')
 
         if (error) throw error
 
@@ -763,16 +774,16 @@ window.selectTournament = async function(tournamentId) {
 // ================================================================
 
 window.editMatch = async function(id) {
-    const { data: match, error: matchError } = await supabase
-        .from('matches')
-        .select(`
-            *,
-            team_a:team_a_id (id, name),
-            team_b:team_b_id (id, name),
-            tournament:tournament_id (id, status)
-        `)
-        .eq('id', id)
-        .single()
+const { data: match, error: matchError } = await supabase
+    .from('matches')
+    .select(`
+        *,
+        team_a:team_a_id (id, name),
+        team_b:team_b_id (id, name),
+        tournament:tournament_id (id, status)
+    `)
+    .eq('id', id)
+    .single()
 
     if (matchError) {
         alert('Ошибка загрузки данных: ' + matchError.message)
