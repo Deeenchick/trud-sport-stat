@@ -23,96 +23,155 @@ const state = {
 // НАВИГАЦИЯ
 // ================================================================
 
-function switchPage(pageId) {
-    // Скрываем все страницы
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
-    
-    // Показываем нужную
-    document.getElementById(`page-${pageId}`).classList.add('active')
-    
-    // Обновляем кнопки
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
-    document.querySelector(`.nav-btn[data-page="${pageId}"]`).classList.add('active')
-}
-
-// Обработчики навигации
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', function() {
+        // Обновляем кнопки
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
+        this.classList.add('active')
+
+        // Получаем ID страницы
         const pageId = this.dataset.page
-        switchPage(pageId)
+
+        // Скрываем все страницы
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
+
+        // Показываем нужную
+        document.getElementById(`page-${pageId}`).classList.add('active')
+
+        // Обновляем контент страницы
+        updatePage(pageId)
+
         window.scrollTo({ top: 0, behavior: 'smooth' })
     })
 })
 
 // ================================================================
-// РЕНДЕРИНГ ТУРНИРОВ (С СОХРАНЕНИЕМ)
+// ОБНОВЛЕНИЕ СТРАНИЦЫ
+// ================================================================
+
+function updatePage(pageId) {
+    switch (pageId) {
+        case 'tournaments':
+            if (state.tournaments.length > 0) {
+                renderTournaments()
+            } else {
+                loadAllData()
+            }
+            break
+        case 'stats':
+            if (state.players.length > 0) {
+                renderStats()
+            } else {
+                loadAllData()
+            }
+            break
+        case 'tops':
+            if (state.stats.length > 0) {
+                renderTops()
+            } else {
+                loadAllData()
+            }
+            break
+        case 'profile':
+            if (state.players.length > 0) {
+                renderPlayers()
+            } else {
+                loadAllData()
+            }
+            break
+    }
+}
+
+// ================================================================
+// ЗАГРУЗКА ВСЕХ ДАННЫХ
+// ================================================================
+
+async function loadAllData() {
+    if (state.isLoaded) {
+        // Данные уже загружены, просто показываем текущую страницу
+        const activePage = document.querySelector('.page.active')
+        if (activePage) {
+            const pageId = activePage.id.replace('page-', '')
+            updatePage(pageId)
+        }
+        return
+    }
+
+    console.log('🔄 Загрузка всех данных...')
+
+    try {
+        // Загружаем турниры
+        const tournaments = await tournamentService.getAll()
+        state.tournaments = tournaments || []
+        console.log(`✅ Загружено ${state.tournaments.length} турниров`)
+
+        // Загружаем игроков со статистикой
+        const players = await statsService.getAllPlayersStats()
+        state.players = players || []
+        state.stats = players || []
+        console.log(`✅ Загружено ${state.players.length} игроков`)
+
+        state.isLoaded = true
+
+        // Показываем текущую страницу
+        const activePage = document.querySelector('.page.active')
+        if (activePage) {
+            const pageId = activePage.id.replace('page-', '')
+            updatePage(pageId)
+        }
+
+    } catch (error) {
+        console.error('❌ Ошибка загрузки данных:', error)
+        showError(error.message)
+    }
+}
+
+function showError(message) {
+    const activePage = document.querySelector('.page.active')
+    if (activePage) {
+        activePage.innerHTML = `
+            <div class="section-title"><i class="fas fa-exclamation-triangle"></i> Ошибка</div>
+            <div class="card">
+                <div class="error">${message}</div>
+                <button onclick="location.reload()" style="margin-top:12px;padding:10px 20px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
+                    🔄 Перезагрузить
+                </button>
+            </div>
+        `
+    }
+}
+
+// ================================================================
+// РЕНДЕРИНГ ТУРНИРОВ
 // ================================================================
 
 function renderTournaments() {
     const container = document.getElementById('page-tournaments')
-    const savedHTML = container.dataset.savedHTML
 
-    // Если уже есть сохраненный HTML — используем его
-    if (savedHTML && savedHTML.includes('tournament-item')) {
-        container.innerHTML = savedHTML
-        return
-    }
-
-    // Иначе рендерим
     container.innerHTML = `
         <div class="section-title">
             <i class="fas fa-calendar-alt"></i> Лента турниров
-            <span class="section-sub" id="tournamentsCount">Загрузка...</span>
+            <span class="section-sub">${state.tournaments.length} турниров</span>
         </div>
         <div class="card" id="tournamentList">
-            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+            ${state.tournaments.length === 0 ? '<div class="empty">Нет турниров</div>' : 
+                state.tournaments.map(t => `
+                    <div class="tournament-item" onclick="window.showTournamentDetail('${t.id}')">
+                        <span class="status-badge status-${t.status}">${t.status}</span>
+                        <span class="tournament-date">${t.date} · ${t.time}</span>
+                        <div class="tournament-stats">
+                            <span>🏆 ${t.name}</span>
+                        </div>
+                        <span class="tournament-arrow"><i class="fas fa-chevron-right"></i></span>
+                    </div>
+                `).join('')
+            }
         </div>
         <div id="tournamentDetail" style="display:none;"></div>
     `
 
-    // Загружаем данные
-    loadTournamentsData()
-}
-
-async function loadTournamentsData() {
-    const container = document.getElementById('page-tournaments')
-    const listContainer = document.getElementById('tournamentList')
-    const countEl = document.getElementById('tournamentsCount')
-
-    try {
-        const tournaments = await tournamentService.getAll()
-        state.tournaments = tournaments
-
-        if (!tournaments || tournaments.length === 0) {
-            listContainer.innerHTML = '<div class="empty">Нет турниров</div>'
-            countEl.textContent = 'нет турниров'
-            return
-        }
-
-        countEl.textContent = `${tournaments.length} турниров`
-
-        listContainer.innerHTML = tournaments.map(t => `
-            <div class="tournament-item" onclick="window.showTournamentDetail('${t.id}')">
-                <span class="status-badge status-${t.status}">${t.status}</span>
-                <span class="tournament-date">${t.date} · ${t.time}</span>
-                <div class="tournament-stats">
-                    <span>🏆 ${t.name}</span>
-                </div>
-                <span class="tournament-arrow"><i class="fas fa-chevron-right"></i></span>
-            </div>
-        `).join('')
-
-        // Сохраняем HTML в dataset
-        container.dataset.savedHTML = container.innerHTML
-
-        // Сохраняем функцию в window
-        window.showTournamentDetail = showTournamentDetail
-
-    } catch (error) {
-        console.error('Ошибка загрузки турниров:', error)
-        listContainer.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
-        countEl.textContent = 'ошибка'
-    }
+    // Сохраняем функцию для показа деталей
+    window.showTournamentDetail = showTournamentDetail
 }
 
 // ================================================================
@@ -121,13 +180,10 @@ async function loadTournamentsData() {
 
 async function showTournamentDetail(tournamentId) {
     const detailContainer = document.getElementById('tournamentDetail')
-    const container = document.getElementById('page-tournaments')
-    
-    // Если уже открыт этот турнир — закрываем
+
     if (state.currentTournamentId === tournamentId && detailContainer.style.display !== 'none') {
         detailContainer.style.display = 'none'
         state.currentTournamentId = null
-        container.dataset.savedHTML = container.innerHTML
         return
     }
 
@@ -143,9 +199,6 @@ async function showTournamentDetail(tournamentId) {
             <div id="detailContent"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
         </div>
     `
-
-    // Сохраняем состояние
-    container.dataset.savedHTML = container.innerHTML
 
     try {
         const tournament = await tournamentService.getById(tournamentId)
@@ -215,10 +268,8 @@ async function showTournamentDetail(tournamentId) {
 }
 
 function closeTournamentDetail() {
-    const container = document.getElementById('page-tournaments')
     document.getElementById('tournamentDetail').style.display = 'none'
     state.currentTournamentId = null
-    container.dataset.savedHTML = container.innerHTML
 }
 
 // ================================================================
@@ -227,17 +278,21 @@ function closeTournamentDetail() {
 
 function renderStats() {
     const container = document.getElementById('page-stats')
-    const savedHTML = container.dataset.savedHTML
 
-    if (savedHTML && savedHTML.includes('stats-table')) {
-        container.innerHTML = savedHTML
+    if (state.players.length === 0) {
+        container.innerHTML = `
+            <div class="section-title"><i class="fas fa-table"></i> Общая таблица игроков</div>
+            <div class="card"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
+        `
         return
     }
+
+    const players = [...state.players].sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
 
     container.innerHTML = `
         <div class="section-title">
             <i class="fas fa-table"></i> Общая таблица игроков
-            <span class="section-sub" id="statsCount">Загрузка...</span>
+            <span class="section-sub">${players.length} игроков</span>
         </div>
         <div class="card">
             <div class="table-wrap">
@@ -254,60 +309,29 @@ function renderStats() {
                             <th>PEI</th>
                         </tr>
                     </thead>
-                    <tbody id="statsBody">
-                        <tr><td colspan="8" class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</td></tr>
+                    <tbody>
+                        ${players.map(p => {
+                            const imp = p.total_matches > 0 
+                                ? (p.total_goals + p.total_assists) / (p.total_matches * 0.5 + 1) 
+                                : 0
+                            return `
+                                <tr>
+                                    <td><a class="player-name-link" onclick="alert('Профиль ${p.name}')">${p.name}</a></td>
+                                    <td>${p.total_tournaments || 0}</td>
+                                    <td>${p.total_matches || 0}</td>
+                                    <td>${p.total_goals || 0}</td>
+                                    <td>${p.total_assists || 0}</td>
+                                    <td>${imp.toFixed(2)}</td>
+                                    <td>${p.total_wins || 0}</td>
+                                    <td><strong>${(p.current_rating || 0).toFixed(2)}</strong></td>
+                                </tr>
+                            `
+                        }).join('')}
                     </tbody>
                 </table>
             </div>
         </div>
     `
-
-    loadStatsData()
-}
-
-async function loadStatsData() {
-    const container = document.getElementById('page-stats')
-    const tbody = document.getElementById('statsBody')
-    const countEl = document.getElementById('statsCount')
-
-    try {
-        const players = await statsService.getAllPlayersStats()
-        state.players = players
-
-        if (!players || players.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="empty">Нет игроков</td></tr>'
-            countEl.textContent = 'нет игроков'
-            return
-        }
-
-        countEl.textContent = `${players.length} игроков`
-        players.sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
-
-        tbody.innerHTML = players.map(p => {
-            const imp = p.total_matches > 0 
-                ? (p.total_goals + p.total_assists) / (p.total_matches * 0.5 + 1) 
-                : 0
-            return `
-                <tr>
-                    <td><a class="player-name-link" onclick="alert('Профиль ${p.name}')">${p.name}</a></td>
-                    <td>${p.total_tournaments || 0}</td>
-                    <td>${p.total_matches || 0}</td>
-                    <td>${p.total_goals || 0}</td>
-                    <td>${p.total_assists || 0}</td>
-                    <td>${imp.toFixed(2)}</td>
-                    <td>${p.total_wins || 0}</td>
-                    <td><strong>${(p.current_rating || 0).toFixed(2)}</strong></td>
-                </tr>
-            `
-        }).join('')
-
-        container.dataset.savedHTML = container.innerHTML
-
-    } catch (error) {
-        console.error('Ошибка загрузки статистики:', error)
-        tbody.innerHTML = `<tr><td colspan="8" class="error">Ошибка: ${error.message}</td></tr>`
-        countEl.textContent = 'ошибка'
-    }
 }
 
 // ================================================================
@@ -316,97 +340,75 @@ async function loadStatsData() {
 
 function renderTops() {
     const container = document.getElementById('page-tops')
-    const savedHTML = container.dataset.savedHTML
 
-    if (savedHTML && savedHTML.includes('hall-card')) {
-        container.innerHTML = savedHTML
+    if (state.stats.length === 0) {
+        container.innerHTML = `
+            <div class="section-title"><i class="fas fa-star"></i> Зал славы</div>
+            <div class="card"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
+        `
         return
     }
 
+    const players = [...state.stats]
+    const topScorers = [...players]
+        .sort((a, b) => (b.total_goals || 0) - (a.total_goals || 0))
+        .slice(0, 10)
+
+    const topRating = [...players]
+        .sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
+        .slice(0, 10)
+
     container.innerHTML = `
         <div class="section-title"><i class="fas fa-star"></i> Зал славы</div>
-        <div class="grid-4" id="hallOfFame">
-            <div class="loading" style="grid-column:1/-1;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+        <div class="grid-4">
+            <div class="hall-card">
+                <div class="hall-icon">🥇</div>
+                <div class="hall-name">${topScorers[0]?.name || '—'}</div>
+                <div class="hall-desc">Лучший бомбардир</div>
+                <div class="hall-value">${topScorers[0]?.total_goals || 0} голов</div>
+            </div>
+            <div class="hall-card">
+                <div class="hall-icon">👑</div>
+                <div class="hall-name">${topRating[0]?.name || '—'}</div>
+                <div class="hall-desc">Лучший PEI</div>
+                <div class="hall-value">${(topRating[0]?.current_rating || 0).toFixed(2)}</div>
+            </div>
+            <div class="hall-card">
+                <div class="hall-icon">⚡</div>
+                <div class="hall-name">${topScorers[1]?.name || '—'}</div>
+                <div class="hall-desc">2-й бомбардир</div>
+                <div class="hall-value">${topScorers[1]?.total_goals || 0} голов</div>
+            </div>
+            <div class="hall-card">
+                <div class="hall-icon">🏅</div>
+                <div class="hall-name">${topRating[1]?.name || '—'}</div>
+                <div class="hall-desc">2-й по PEI</div>
+                <div class="hall-value">${(topRating[1]?.current_rating || 0).toFixed(2)}</div>
+            </div>
         </div>
 
         <div class="section-title mt-24"><i class="fas fa-list-ol"></i> ТОП-10 бомбардиров</div>
-        <div class="card" id="topScorersList">
-            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+        <div class="card">
+            ${topScorers.map((p, i) => `
+                <div class="top-row">
+                    <span class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
+                    <span class="top-name">${p.name}</span>
+                    <span class="top-value">${p.total_goals || 0} ⚽</span>
+                </div>
+            `).join('')}
         </div>
 
         <div class="section-title mt-24"><i class="fas fa-list-ol"></i> ТОП-10 по рейтингу (PEI)</div>
-        <div class="card" id="topRatingList">
-            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+        <div class="card">
+            ${topRating.map((p, i) => `
+                <div class="top-row">
+                    <span class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
+                    <span class="top-name">${p.name}</span>
+                    <span class="top-value">${(p.current_rating || 0).toFixed(2)}</span>
+                </div>
+            `).join('')}
         </div>
     `
-
-    loadTopsData()
-}
-
-async function loadTopsData() {
-    const container = document.getElementById('page-tops')
-    const hallContainer = document.getElementById('hallOfFame')
-    const scorersContainer = document.getElementById('topScorersList')
-    const ratingContainer = document.getElementById('topRatingList')
-
-    try {
-        const players = await statsService.getAllPlayersStats()
-        state.stats = players
-
-        if (!players || players.length === 0) {
-            hallContainer.innerHTML = '<div class="empty" style="grid-column:1/-1;">Нет игроков</div>'
-            scorersContainer.innerHTML = '<div class="empty">Нет данных</div>'
-            ratingContainer.innerHTML = '<div class="empty">Нет данных</div>'
-            return
-        }
-
-        const topScorers = [...players]
-            .sort((a, b) => (b.total_goals || 0) - (a.total_goals || 0))
-            .slice(0, 10)
-
-        const topRating = [...players]
-            .sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
-            .slice(0, 10)
-
-        // Зал славы
-        hallContainer.innerHTML = [
-            { icon: '🥇', name: topScorers[0]?.name || '—', desc: 'Лучший бомбардир', value: `${topScorers[0]?.total_goals || 0} голов` },
-            { icon: '👑', name: topRating[0]?.name || '—', desc: 'Лучший PEI', value: `${(topRating[0]?.current_rating || 0).toFixed(2)}` },
-            { icon: '⚡', name: topScorers[1]?.name || '—', desc: '2-й бомбардир', value: `${topScorers[1]?.total_goals || 0} голов` },
-            { icon: '🏅', name: topRating[1]?.name || '—', desc: '2-й по PEI', value: `${(topRating[1]?.current_rating || 0).toFixed(2)}` }
-        ].map(h => `
-            <div class="hall-card">
-                <div class="hall-icon">${h.icon}</div>
-                <div class="hall-name">${h.name}</div>
-                <div class="hall-desc">${h.desc}</div>
-                <div class="hall-value">${h.value}</div>
-            </div>
-        `).join('')
-
-        // ТОП-10 бомбардиров
-        scorersContainer.innerHTML = topScorers.map((p, i) => `
-            <div class="top-row">
-                <span class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
-                <span class="top-name">${p.name}</span>
-                <span class="top-value">${p.total_goals || 0} ⚽</span>
-            </div>
-        `).join('')
-
-        // ТОП-10 по PEI
-        ratingContainer.innerHTML = topRating.map((p, i) => `
-            <div class="top-row">
-                <span class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
-                <span class="top-name">${p.name}</span>
-                <span class="top-value">${(p.current_rating || 0).toFixed(2)}</span>
-            </div>
-        `).join('')
-
-        container.dataset.savedHTML = container.innerHTML
-
-    } catch (error) {
-        console.error('Ошибка загрузки ТОПов:', error)
-        hallContainer.innerHTML = `<div class="error" style="grid-column:1/-1;">Ошибка: ${error.message}</div>`
-    }
 }
 
 // ================================================================
@@ -415,105 +417,45 @@ async function loadTopsData() {
 
 function renderPlayers() {
     const container = document.getElementById('page-profile')
-    const savedHTML = container.dataset.savedHTML
 
-    if (savedHTML && savedHTML.includes('player-card')) {
-        container.innerHTML = savedHTML
+    if (state.players.length === 0) {
+        container.innerHTML = `
+            <div class="section-title"><i class="fas fa-id-card"></i> Галерея игроков</div>
+            <div class="card"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
+        `
         return
     }
+
+    const players = [...state.players].sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
 
     container.innerHTML = `
         <div class="section-title">
             <i class="fas fa-id-card"></i> Галерея игроков
-            <span class="section-sub" id="playersCount">Загрузка...</span>
+            <span class="section-sub">${players.length} игроков</span>
         </div>
         <div class="card">
-            <div class="player-grid" id="playerGrid">
-                <div class="loading" style="grid-column:1/-1;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+            <div class="player-grid">
+                ${players.map(p => {
+                    const initials = p.name.split(' ').map(w => w[0]).join('')
+                    return `
+                        <div class="player-card" onclick="alert('Профиль ${p.name}\\nPEI: ${(p.current_rating || 0).toFixed(2)}\\nГолы: ${p.total_goals || 0}\\nПасы: ${p.total_assists || 0}')">
+                            <div class="player-avatar">${initials}</div>
+                            <div class="player-name">${p.name}</div>
+                            <div class="player-rating">${(p.current_rating || 0).toFixed(2)}</div>
+                            <div class="player-label">PEI</div>
+                        </div>
+                    `
+                }).join('')}
             </div>
         </div>
     `
-
-    loadPlayersData()
 }
-
-async function loadPlayersData() {
-    const container = document.getElementById('page-profile')
-    const grid = document.getElementById('playerGrid')
-    const countEl = document.getElementById('playersCount')
-
-    try {
-        const players = await statsService.getAllPlayersStats()
-
-        if (!players || players.length === 0) {
-            grid.innerHTML = '<div class="empty" style="grid-column:1/-1;">Нет игроков</div>'
-            countEl.textContent = 'нет игроков'
-            return
-        }
-
-        countEl.textContent = `${players.length} игроков`
-        players.sort((a, b) => (b.current_rating || 0) - (a.current_rating || 0))
-
-        grid.innerHTML = players.map(p => {
-            const initials = p.name.split(' ').map(w => w[0]).join('')
-            return `
-                <div class="player-card" onclick="alert('Профиль ${p.name}\\nPEI: ${(p.current_rating || 0).toFixed(2)}\\nГолы: ${p.total_goals || 0}\\nПасы: ${p.total_assists || 0}')">
-                    <div class="player-avatar">${initials}</div>
-                    <div class="player-name">${p.name}</div>
-                    <div class="player-rating">${(p.current_rating || 0).toFixed(2)}</div>
-                    <div class="player-label">PEI</div>
-                </div>
-            `
-        }).join('')
-
-        container.dataset.savedHTML = container.innerHTML
-
-    } catch (error) {
-        console.error('Ошибка загрузки игроков:', error)
-        grid.innerHTML = `<div class="error" style="grid-column:1/-1;">Ошибка: ${error.message}</div>`
-        countEl.textContent = 'ошибка'
-    }
-}
-
-// ================================================================
-// ОБНОВЛЕННАЯ НАВИГАЦИЯ С СОХРАНЕНИЕМ
-// ================================================================
-
-// Переопределяем обработчики
-document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const pageId = this.dataset.page
-
-        // Обновляем кнопки
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
-        this.classList.add('active')
-
-        // Скрываем все страницы
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
-
-        // Показываем нужную
-        const pageElement = document.getElementById(`page-${pageId}`)
-        pageElement.classList.add('active')
-
-        // Загружаем данные, если страница пустая
-        if (!pageElement.dataset.savedHTML || !pageElement.dataset.savedHTML.includes('card')) {
-            switch (pageId) {
-                case 'tournaments': renderTournaments(); break
-                case 'stats': renderStats(); break
-                case 'tops': renderTops(); break
-                case 'profile': renderPlayers(); break
-            }
-        }
-
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-    })
-})
 
 // ================================================================
 // ЗАПУСК
 // ================================================================
 
-// Загружаем первую страницу
-renderTournaments()
+// Загружаем все данные при старте
+loadAllData()
 
 console.log('✅ СпортСтат приложение загружено!')
