@@ -1,42 +1,50 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0b0e12">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>⚽ СпортСтат</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="css/style.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
 </head>
 <body>
+
     <div class="app" id="app">
         <!-- ===== НАВИГАЦИЯ ===== -->
         <nav class="navbar">
-            <button class="nav-btn active" data-page="page-tournaments">
-                <i class="fas fa-trophy"></i> <span>Турниры</span>
+            <button class="nav-btn active" data-page="tournaments">
+                <i class="fas fa-trophy"></i> Турниры
             </button>
-            <button class="nav-btn" data-page="page-stats">
-                <i class="fas fa-chart-bar"></i> <span>Статистика</span>
+            <button class="nav-btn" data-page="stats">
+                <i class="fas fa-chart-bar"></i> Статистика
             </button>
-            <button class="nav-btn" data-page="page-tops">
-                <i class="fas fa-crown"></i> <span>ТОПы</span>
+            <button class="nav-btn" data-page="tops">
+                <i class="fas fa-crown"></i> ТОПы
             </button>
-            <button class="nav-btn" data-page="page-profile">
-                <i class="fas fa-users"></i> <span>Профиль</span>
+            <button class="nav-btn" data-page="profile">
+                <i class="fas fa-users"></i> Профиль игроков
             </button>
         </nav>
 
-        <!-- ===== СТРАНИЦЫ ===== -->
-        <div class="page active" id="page-tournaments"></div>
-        <div class="page" id="page-stats"></div>
-        <div class="page" id="page-tops"></div>
-        <div class="page" id="page-profile"></div>
+        <!-- ===== СТРАНИЦЫ (все сразу загружены, просто скрыты) ===== -->
+        <div class="page active" id="page-tournaments">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка турниров...</div>
+        </div>
 
-        <!-- ===== ТОСТ ДЛЯ УВЕДОМЛЕНИЙ ===== -->
-        <div id="toast" class="toast hidden"></div>
+        <div class="page" id="page-stats">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка статистики...</div>
+        </div>
+
+        <div class="page" id="page-tops">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка ТОПов...</div>
+        </div>
+
+        <div class="page" id="page-profile">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка игроков...</div>
+        </div>
     </div>
 
     <script type="module" src="js/app.js"></script>
