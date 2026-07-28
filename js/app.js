@@ -16,21 +16,21 @@ const state = {
     players: [],
     stats: [],
     currentTournamentId: null,
+    isLoading: false,
     isLoaded: false
 }
 
 // ================================================================
-// НАВИГАЦИЯ
+// НАВИГАЦИЯ (ПРОСТО ПОКАЗЫВАЕМ/СКРЫВАЕМ СТРАНИЦЫ)
 // ================================================================
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', function() {
+        const pageId = this.dataset.page
+
         // Обновляем кнопки
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
         this.classList.add('active')
-
-        // Получаем ID страницы
-        const pageId = this.dataset.page
 
         // Скрываем все страницы
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
@@ -38,74 +38,28 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         // Показываем нужную
         document.getElementById(`page-${pageId}`).classList.add('active')
 
-        // Обновляем контент страницы
-        updatePage(pageId)
-
         window.scrollTo({ top: 0, behavior: 'smooth' })
     })
 })
 
 // ================================================================
-// ОБНОВЛЕНИЕ СТРАНИЦЫ
-// ================================================================
-
-function updatePage(pageId) {
-    switch (pageId) {
-        case 'tournaments':
-            if (state.tournaments.length > 0) {
-                renderTournaments()
-            } else {
-                loadAllData()
-            }
-            break
-        case 'stats':
-            if (state.players.length > 0) {
-                renderStats()
-            } else {
-                loadAllData()
-            }
-            break
-        case 'tops':
-            if (state.stats.length > 0) {
-                renderTops()
-            } else {
-                loadAllData()
-            }
-            break
-        case 'profile':
-            if (state.players.length > 0) {
-                renderPlayers()
-            } else {
-                loadAllData()
-            }
-            break
-    }
-}
-
-// ================================================================
-// ЗАГРУЗКА ВСЕХ ДАННЫХ
+// ЗАГРУЗКА ВСЕХ ДАННЫХ ПРИ СТАРТЕ
 // ================================================================
 
 async function loadAllData() {
-    if (state.isLoaded) {
-        // Данные уже загружены, просто показываем текущую страницу
-        const activePage = document.querySelector('.page.active')
-        if (activePage) {
-            const pageId = activePage.id.replace('page-', '')
-            updatePage(pageId)
-        }
-        return
-    }
+    if (state.isLoaded) return
+    if (state.isLoading) return
 
+    state.isLoading = true
     console.log('🔄 Загрузка всех данных...')
 
     try {
-        // Загружаем турниры
+        // 1. Загружаем турниры
         const tournaments = await tournamentService.getAll()
         state.tournaments = tournaments || []
         console.log(`✅ Загружено ${state.tournaments.length} турниров`)
 
-        // Загружаем игроков со статистикой
+        // 2. Загружаем игроков со статистикой
         const players = await statsService.getAllPlayersStats()
         state.players = players || []
         state.stats = players || []
@@ -113,23 +67,25 @@ async function loadAllData() {
 
         state.isLoaded = true
 
-        // Показываем текущую страницу
-        const activePage = document.querySelector('.page.active')
-        if (activePage) {
-            const pageId = activePage.id.replace('page-', '')
-            updatePage(pageId)
-        }
+        // 3. Рендерим все страницы
+        renderTournaments()
+        renderStats()
+        renderTops()
+        renderPlayers()
+
+        console.log('✅ Все данные загружены и отрендерены!')
 
     } catch (error) {
         console.error('❌ Ошибка загрузки данных:', error)
         showError(error.message)
+    } finally {
+        state.isLoading = false
     }
 }
 
 function showError(message) {
-    const activePage = document.querySelector('.page.active')
-    if (activePage) {
-        activePage.innerHTML = `
+    document.querySelectorAll('.page').forEach(page => {
+        page.innerHTML = `
             <div class="section-title"><i class="fas fa-exclamation-triangle"></i> Ошибка</div>
             <div class="card">
                 <div class="error">${message}</div>
@@ -138,7 +94,7 @@ function showError(message) {
                 </button>
             </div>
         `
-    }
+    })
 }
 
 // ================================================================
@@ -148,29 +104,39 @@ function showError(message) {
 function renderTournaments() {
     const container = document.getElementById('page-tournaments')
 
+    if (state.tournaments.length === 0) {
+        container.innerHTML = `
+            <div class="section-title">
+                <i class="fas fa-calendar-alt"></i> Лента турниров
+                <span class="section-sub">нет турниров</span>
+            </div>
+            <div class="card">
+                <div class="empty">Нет турниров</div>
+            </div>
+        `
+        return
+    }
+
     container.innerHTML = `
         <div class="section-title">
             <i class="fas fa-calendar-alt"></i> Лента турниров
             <span class="section-sub">${state.tournaments.length} турниров</span>
         </div>
         <div class="card" id="tournamentList">
-            ${state.tournaments.length === 0 ? '<div class="empty">Нет турниров</div>' : 
-                state.tournaments.map(t => `
-                    <div class="tournament-item" onclick="window.showTournamentDetail('${t.id}')">
-                        <span class="status-badge status-${t.status}">${t.status}</span>
-                        <span class="tournament-date">${t.date} · ${t.time}</span>
-                        <div class="tournament-stats">
-                            <span>🏆 ${t.name}</span>
-                        </div>
-                        <span class="tournament-arrow"><i class="fas fa-chevron-right"></i></span>
+            ${state.tournaments.map(t => `
+                <div class="tournament-item" onclick="window.showTournamentDetail('${t.id}')">
+                    <span class="status-badge status-${t.status}">${t.status}</span>
+                    <span class="tournament-date">${t.date} · ${t.time}</span>
+                    <div class="tournament-stats">
+                        <span>🏆 ${t.name}</span>
                     </div>
-                `).join('')
-            }
+                    <span class="tournament-arrow"><i class="fas fa-chevron-right"></i></span>
+                </div>
+            `).join('')}
         </div>
         <div id="tournamentDetail" style="display:none;"></div>
     `
 
-    // Сохраняем функцию для показа деталей
     window.showTournamentDetail = showTournamentDetail
 }
 
@@ -282,7 +248,7 @@ function renderStats() {
     if (state.players.length === 0) {
         container.innerHTML = `
             <div class="section-title"><i class="fas fa-table"></i> Общая таблица игроков</div>
-            <div class="card"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
+            <div class="card"><div class="empty">Нет игроков</div></div>
         `
         return
     }
@@ -344,7 +310,7 @@ function renderTops() {
     if (state.stats.length === 0) {
         container.innerHTML = `
             <div class="section-title"><i class="fas fa-star"></i> Зал славы</div>
-            <div class="card"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
+            <div class="card"><div class="empty">Нет данных</div></div>
         `
         return
     }
@@ -361,30 +327,19 @@ function renderTops() {
     container.innerHTML = `
         <div class="section-title"><i class="fas fa-star"></i> Зал славы</div>
         <div class="grid-4">
-            <div class="hall-card">
-                <div class="hall-icon">🥇</div>
-                <div class="hall-name">${topScorers[0]?.name || '—'}</div>
-                <div class="hall-desc">Лучший бомбардир</div>
-                <div class="hall-value">${topScorers[0]?.total_goals || 0} голов</div>
-            </div>
-            <div class="hall-card">
-                <div class="hall-icon">👑</div>
-                <div class="hall-name">${topRating[0]?.name || '—'}</div>
-                <div class="hall-desc">Лучший PEI</div>
-                <div class="hall-value">${(topRating[0]?.current_rating || 0).toFixed(2)}</div>
-            </div>
-            <div class="hall-card">
-                <div class="hall-icon">⚡</div>
-                <div class="hall-name">${topScorers[1]?.name || '—'}</div>
-                <div class="hall-desc">2-й бомбардир</div>
-                <div class="hall-value">${topScorers[1]?.total_goals || 0} голов</div>
-            </div>
-            <div class="hall-card">
-                <div class="hall-icon">🏅</div>
-                <div class="hall-name">${topRating[1]?.name || '—'}</div>
-                <div class="hall-desc">2-й по PEI</div>
-                <div class="hall-value">${(topRating[1]?.current_rating || 0).toFixed(2)}</div>
-            </div>
+            ${[
+                { icon: '🥇', name: topScorers[0]?.name || '—', desc: 'Лучший бомбардир', value: `${topScorers[0]?.total_goals || 0} голов` },
+                { icon: '👑', name: topRating[0]?.name || '—', desc: 'Лучший PEI', value: `${(topRating[0]?.current_rating || 0).toFixed(2)}` },
+                { icon: '⚡', name: topScorers[1]?.name || '—', desc: '2-й бомбардир', value: `${topScorers[1]?.total_goals || 0} голов` },
+                { icon: '🏅', name: topRating[1]?.name || '—', desc: '2-й по PEI', value: `${(topRating[1]?.current_rating || 0).toFixed(2)}` }
+            ].map(h => `
+                <div class="hall-card">
+                    <div class="hall-icon">${h.icon}</div>
+                    <div class="hall-name">${h.name}</div>
+                    <div class="hall-desc">${h.desc}</div>
+                    <div class="hall-value">${h.value}</div>
+                </div>
+            `).join('')}
         </div>
 
         <div class="section-title mt-24"><i class="fas fa-list-ol"></i> ТОП-10 бомбардиров</div>
@@ -421,7 +376,7 @@ function renderPlayers() {
     if (state.players.length === 0) {
         container.innerHTML = `
             <div class="section-title"><i class="fas fa-id-card"></i> Галерея игроков</div>
-            <div class="card"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
+            <div class="card"><div class="empty">Нет игроков</div></div>
         `
         return
     }
