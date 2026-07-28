@@ -1,6 +1,6 @@
 // js/admin.js
 // ================================================================
-// АДМИН-ПАНЕЛЬ (ПОЛНАЯ ВЕРСИЯ)
+// АДМИН-ПАНЕЛЬ (ПОЛНАЯ ВЕРСИЯ С ИСПРАВЛЕНИЯМИ)
 // ================================================================
 
 import { supabase } from './supabase.js'
@@ -11,6 +11,8 @@ import { supabase } from './supabase.js'
 
 let currentTournamentId = null
 let currentMatchData = null
+let allPlayersCache = []
+let currentTeamSelections = {}
 
 // ================================================================
 // ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК
@@ -44,6 +46,7 @@ async function loadPlayers() {
             container.innerHTML = '<div class="empty">Нет игроков</div>'
             return
         }
+        allPlayersCache = data
         container.innerHTML = `
             <div class="table-wrap">
                 <table class="stats-table">
@@ -68,7 +71,7 @@ async function loadPlayers() {
 }
 
 // ================================================================
-// ЗАГРУЗКА ТУРНИРОВ
+// ЗАГРУЗКА ТУРНИРОВ (С ОТОБРАЖЕНИЕМ СОСТАВОВ)
 // ================================================================
 
 async function loadTournaments() {
@@ -80,7 +83,8 @@ async function loadTournaments() {
             container.innerHTML = '<div class="empty">Нет турниров</div>'
             return
         }
-        container.innerHTML = `
+
+        let html = `
             <div class="table-wrap">
                 <table class="stats-table">
                     <thead>
@@ -89,28 +93,65 @@ async function loadTournaments() {
                             <th>Дата</th>
                             <th>Время</th>
                             <th>Статус</th>
+                            <th>Составы</th>
                             <th style="text-align:center;">Действия</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.map(t => `
-                            <tr>
-                                <td><strong>${t.name}</strong></td>
-                                <td>${t.date}</td>
-                                <td>${t.time}</td>
-                                <td><span class="status-badge status-${t.status}">${t.status}</span></td>
-                                <td style="text-align:center;">
-                                    <button onclick="editTournament('${t.id}')" class="btn-warning" style="margin-right:4px;">✏️</button>
-                                    <button onclick="manageTeams('${t.id}')" class="btn-primary" style="margin-right:4px;">👥 Составы</button>
-                                    <button onclick="generateSchedule('${t.id}')" class="btn-success" style="margin-right:4px;">📅</button>
-                                    <button onclick="deleteTournament('${t.id}')" class="btn-danger">🗑️</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
         `
+
+        for (const t of data) {
+            // Получаем команды и их составы
+            const { data: teams, error: teamsError } = await supabase
+                .from('tournament_teams')
+                .select('*')
+                .eq('tournament_id', t.id)
+                .order('name')
+
+            let teamsHtml = ''
+            if (teams && teams.length > 0) {
+                for (const team of teams) {
+                    const { data: players, error: playersError } = await supabase
+                        .from('team_players')
+                        .select(`players:player_id (id, name)`)
+                        .eq('team_id', team.id)
+
+                    const playerNames = players && players.length > 0 
+                        ? players.map(tp => tp.players?.name || '?').join(', ')
+                        : '—'
+
+                    const teamColor = team.name === 'А' ? 'team-A' : team.name === 'Б' ? 'team-B' : 'team-C'
+                    teamsHtml += `
+                        <div style="font-size:12px;margin:2px 0;">
+                            <span class="team-badge ${teamColor}">${team.name}</span>
+                            <span style="color:#7a8399;">${playerNames}</span>
+                        </div>
+                    `
+                }
+            } else {
+                teamsHtml = '<span style="color:#7a8399;font-size:12px;">Нет команд</span>'
+            }
+
+            html += `
+                <tr>
+                    <td><strong>${t.name}</strong></td>
+                    <td>${t.date}</td>
+                    <td>${t.time}</td>
+                    <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                    <td style="font-size:12px;">${teamsHtml}</td>
+                    <td style="text-align:center;">
+                        <button onclick="editTournament('${t.id}')" class="btn-warning" style="margin-right:4px;">✏️</button>
+                        <button onclick="manageTeams('${t.id}')" class="btn-primary" style="margin-right:4px;">👥 Составы</button>
+                        <button onclick="generateSchedule('${t.id}')" class="btn-success" style="margin-right:4px;">📅</button>
+                        <button onclick="deleteTournament('${t.id}')" class="btn-danger">🗑️</button>
+                    </td>
+                </tr>
+            `
+        }
+
+        html += `</tbody></table></div>`
+        container.innerHTML = html
+
     } catch (error) {
         container.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
     }
@@ -147,7 +188,7 @@ async function loadMatches() {
 }
 
 // ================================================================
-// УПРАВЛЕНИЕ СОСТАВАМИ КОМАНД
+// УПРАВЛЕНИЕ СОСТАВАМИ КОМАНД (С ИСПРАВЛЕНИЯМИ)
 // ================================================================
 
 window.manageTeams = async function(tournamentId) {
@@ -188,7 +229,6 @@ window.manageTeams = async function(tournamentId) {
             }
         }
         
-        // Перезагружаем команды
         const { data: newTeams, error: reloadError } = await supabase
             .from('tournament_teams')
             .select('*')
@@ -213,8 +253,10 @@ window.manageTeams = async function(tournamentId) {
         return
     }
 
-    // Получаем текущие составы
-    const teamPlayers = {}
+    // Получаем текущие составы для всех команд
+    let allTeamPlayers = {}
+    let allSelectedPlayerIds = new Set()
+
     for (const team of teams) {
         const { data, error } = await supabase
             .from('team_players')
@@ -222,9 +264,11 @@ window.manageTeams = async function(tournamentId) {
             .eq('team_id', team.id)
         
         if (!error) {
-            teamPlayers[team.id] = data.map(tp => tp.player_id)
+            const playerIds = data.map(tp => tp.player_id)
+            allTeamPlayers[team.id] = playerIds
+            playerIds.forEach(id => allSelectedPlayerIds.add(id))
         } else {
-            teamPlayers[team.id] = []
+            allTeamPlayers[team.id] = []
         }
     }
 
@@ -235,7 +279,8 @@ window.manageTeams = async function(tournamentId) {
 
     let html = `
         <div style="margin-bottom:16px;color:#7a8399;font-size:14px;">
-            Выберите по 5 игроков для каждой команды
+            Выберите по 5 игроков для каждой команды. 
+            <span style="color:#ffd700;">Игрок может быть только в одной команде.</span>
         </div>
         <form id="teamsForm">
     `
@@ -247,23 +292,36 @@ window.manageTeams = async function(tournamentId) {
                 <div style="font-weight:700;color:#ffd700;margin-bottom:8px;">
                     <span class="team-badge ${teamColor}">Команда ${team.name}</span>
                     <span style="color:#7a8399;font-weight:400;font-size:13px;margin-left:8px;">
-                        (выбрано: <span id="count-${team.id}">${teamPlayers[team.id]?.length || 0}</span>/5)
+                        (выбрано: <span id="count-${team.id}">${allTeamPlayers[team.id]?.length || 0}</span>/5)
                     </span>
                 </div>
                 <div class="player-select-grid">
-                    ${allPlayers.map(p => {
-                        const checked = teamPlayers[team.id]?.includes(p.id) ? 'checked' : ''
-                        return `
-                            <div class="player-select-item">
-                                <input type="checkbox" 
-                                       name="team_${team.id}" 
-                                       value="${p.id}" 
-                                       ${checked}
-                                       onchange="updateTeamCount('${team.id}')">
-                                <label style="font-size:14px;cursor:pointer;">${p.name}</label>
-                            </div>
-                        `
-                    }).join('')}
+        `
+
+        for (const player of allPlayers) {
+            // Проверяем, выбран ли игрок в другой команде
+            const isSelectedInOtherTeam = allSelectedPlayerIds.has(player.id) && !allTeamPlayers[team.id]?.includes(player.id)
+            const isSelectedInThisTeam = allTeamPlayers[team.id]?.includes(player.id)
+            const checked = isSelectedInThisTeam ? 'checked' : ''
+            const disabled = isSelectedInOtherTeam ? 'disabled' : ''
+
+            html += `
+                <div class="player-select-item" style="${isSelectedInOtherTeam ? 'opacity:0.4;' : ''}">
+                    <input type="checkbox" 
+                           name="team_${team.id}" 
+                           value="${player.id}" 
+                           ${checked}
+                           ${disabled}
+                           onchange="updateTeamCount('${team.id}')">
+                    <label style="font-size:14px;cursor:${disabled ? 'not-allowed' : 'pointer'};">
+                        ${player.name}
+                        ${isSelectedInOtherTeam ? ' (в другой команде)' : ''}
+                    </label>
+                </div>
+            `
+        }
+
+        html += `
                 </div>
             </div>
         `
@@ -279,23 +337,47 @@ window.manageTeams = async function(tournamentId) {
     content.innerHTML = html
     modal.style.display = 'flex'
 
-    // Сохраняем ID команд для использования в onchange
+    // Сохраняем данные для onchange
     window.currentTeamIds = teams.map(t => t.id)
+    window.allPlayersData = allPlayers
+    window.currentTeamPlayers = allTeamPlayers
+    window.allSelectedIds = allSelectedPlayerIds
 
+    // Настраиваем валидацию формы
     document.getElementById('teamsForm').onsubmit = async function(e) {
         e.preventDefault()
         
-        // Собираем данные
+        // Проверяем, что у каждой команды ровно 5 игроков
+        let hasError = false
+        const teamSelections = {}
+
         for (const team of teams) {
             const checkboxes = document.querySelectorAll(`input[name="team_${team.id}"]:checked`)
             const playerIds = Array.from(checkboxes).map(cb => cb.value)
-            
-            // Проверяем, что выбрано 5 игроков
+            teamSelections[team.id] = playerIds
+
             if (playerIds.length !== 5) {
                 alert(`Для команды ${team.name} нужно выбрать ровно 5 игроков (сейчас ${playerIds.length})`)
-                return
+                hasError = true
+                break
             }
+        }
 
+        if (hasError) return
+
+        // Проверяем, что игроки не пересекаются
+        const allSelected = []
+        for (const team of teams) {
+            allSelected.push(...teamSelections[team.id])
+        }
+        const uniqueSelected = new Set(allSelected)
+        if (uniqueSelected.size !== allSelected.length) {
+            alert('Один игрок не может быть в двух командах одновременно!')
+            return
+        }
+
+        // Сохраняем составы
+        for (const team of teams) {
             // Удаляем старые связи
             await supabase
                 .from('team_players')
@@ -303,7 +385,7 @@ window.manageTeams = async function(tournamentId) {
                 .eq('team_id', team.id)
 
             // Добавляем новые
-            for (const playerId of playerIds) {
+            for (const playerId of teamSelections[team.id]) {
                 await supabase
                     .from('team_players')
                     .insert({ team_id: team.id, player_id: playerId })
@@ -321,14 +403,40 @@ window.updateTeamCount = function(teamId) {
     const checkboxes = document.querySelectorAll(`input[name="team_${teamId}"]:checked`)
     const countEl = document.getElementById(`count-${teamId}`)
     if (countEl) {
-        countEl.textContent = checkboxes.length
-        // Меняем цвет, если не 5
-        countEl.style.color = checkboxes.length === 5 ? '#5dca8a' : '#ffd700'
+        const count = checkboxes.length
+        countEl.textContent = count
+        countEl.style.color = count === 5 ? '#5dca8a' : '#ffd700'
     }
+
+    // Обновляем доступность чекбоксов: блокируем игроков, выбранных в других командах
+    const allChecked = {}
+    document.querySelectorAll('.player-select-item input[type="checkbox"]:checked').forEach(cb => {
+        allChecked[cb.value] = true
+    })
+
+    document.querySelectorAll('.player-select-item input[type="checkbox"]').forEach(cb => {
+        const isChecked = cb.checked
+        const teamIdFromName = cb.name.replace('team_', '')
+        const isInCurrentTeam = teamIdFromName === teamId.toString()
+        
+        if (!isChecked && allChecked[cb.value] && !isInCurrentTeam) {
+            // Если игрок выбран в другой команде — блокируем
+            cb.disabled = true
+            cb.closest('.player-select-item').style.opacity = '0.4'
+            cb.closest('.player-select-item').querySelector('label').textContent = 
+                cb.closest('.player-select-item').querySelector('label').textContent.replace(' (в другой команде)', '') + ' (в другой команде)'
+        } else if (!allChecked[cb.value]) {
+            // Если игрок нигде не выбран — разблокируем
+            cb.disabled = false
+            cb.closest('.player-select-item').style.opacity = '1'
+            cb.closest('.player-select-item').querySelector('label').textContent = 
+                cb.closest('.player-select-item').querySelector('label').textContent.replace(' (в другой команде)', '')
+        }
+    })
 }
 
 // ================================================================
-// СОЗДАНИЕ ТУРНИРА (ИСПРАВЛЕНО)
+// СОЗДАНИЕ ТУРНИРА
 // ================================================================
 
 window.showAddTournament = function() {
@@ -371,43 +479,27 @@ window.showAddTournament = function() {
         }
 
         try {
-            console.log('🔄 Создаем турнир:', { name, date, time })
-
-            // 1. Создаем турнир
             const { data: tournament, error: tourError } = await supabase
                 .from('tournaments')
                 .insert({ name, date, time, status: 'scheduled' })
                 .select()
                 .single()
 
-            if (tourError) {
-                console.error('❌ Ошибка создания турнира:', tourError)
-                alert('Ошибка: ' + tourError.message)
-                return
-            }
+            if (tourError) throw tourError
 
-            console.log('✅ Турнир создан:', tournament)
-
-            // 2. Создаем 3 команды (А, Б, В)
+            // Создаем 3 команды
             const teamNames = ['А', 'Б', 'В']
             for (const teamName of teamNames) {
-                const { error: teamError } = await supabase
+                await supabase
                     .from('tournament_teams')
                     .insert({ tournament_id: tournament.id, name: teamName })
-                
-                if (teamError) {
-                    console.error(`❌ Ошибка создания команды ${teamName}:`, teamError)
-                } else {
-                    console.log(`✅ Команда ${teamName} создана`)
-                }
             }
 
             closeModal()
             await loadTournaments()
-            alert(`✅ Турнир "${name}" создан! Команды А, Б, В добавлены автоматически. Теперь распределите игроков по командам (кнопка "Составы").`)
+            alert(`✅ Турнир "${name}" создан! Теперь распределите игроков по командам.`)
             
         } catch (error) {
-            console.error('❌ Ошибка:', error)
             alert('❌ Ошибка: ' + error.message)
         }
     }
@@ -488,7 +580,7 @@ window.editTournament = async function(id) {
 }
 
 // ================================================================
-// ГЕНЕРАЦИЯ РАСПИСАНИЯ (С ПРОВЕРКОЙ)
+// ГЕНЕРАЦИЯ РАСПИСАНИЯ
 // ================================================================
 
 window.generateSchedule = async function(tournamentId) {
@@ -504,7 +596,7 @@ window.generateSchedule = async function(tournamentId) {
     }
 
     if (!teams || teams.length < 3) {
-        alert('❌ Сначала добавьте команды и распределите игроков! (кнопка "Составы")')
+        alert('❌ Сначала добавьте команды и распределите игроков!')
         return
     }
 
@@ -524,7 +616,7 @@ window.generateSchedule = async function(tournamentId) {
     }
 
     if (!hasPlayers) {
-        alert('❌ В командах нет игроков! Сначала распределите игроков по командам (кнопка "Составы")')
+        alert('❌ В командах нет игроков! Сначала распределите игроков по командам.')
         return
     }
 
@@ -545,7 +637,6 @@ window.generateSchedule = async function(tournamentId) {
             return
         }
         
-        // Удаляем старые матчи
         const { error: deleteError } = await supabase
             .from('matches')
             .delete()
@@ -734,7 +825,7 @@ window.selectTournament = async function(tournamentId) {
 }
 
 // ================================================================
-// РЕДАКТИРОВАНИЕ МАТЧА
+// РЕДАКТИРОВАНИЕ МАТЧА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
 // ================================================================
 
 window.editMatch = async function(id) {
@@ -873,20 +964,27 @@ window.editMatch = async function(id) {
         match: match
     }
 
-    loadMatchGoals(id)
+    // Загружаем голы и обновляем счет
+    await loadMatchGoals(id)
 
     document.getElementById('editMatchForm').onsubmit = async function(e) {
         e.preventDefault()
         const status = document.getElementById('editMatchStatus').value
+        
         try {
+            // Сначала обновляем счет, затем статус
+            await updateMatchScore(id)
+            
             const { error } = await supabase
                 .from('matches')
                 .update({ status })
                 .eq('id', id)
+            
             if (error) throw error
+            
             closeModal()
             if (currentTournamentId) await selectTournament(currentTournamentId)
-            alert('✅ Статус матча обновлен!')
+            alert('✅ Матч обновлен!')
         } catch (error) {
             alert('❌ Ошибка: ' + error.message)
         }
@@ -924,19 +1022,20 @@ window.updateAssistOptions = function() {
 }
 
 // ================================================================
-// ЗАГРУЗКА ГОЛОВ
+// ЗАГРУЗКА ГОЛОВ (С АВТООБНОВЛЕНИЕМ СЧЕТА)
 // ================================================================
 
 async function loadMatchGoals(matchId) {
     const container = document.getElementById('matchGoalsList')
     try {
+        // Сначала обновляем счет
+        await updateMatchScore(matchId)
+
         const { data, error } = await supabase
             .from('goals')
             .select(`id, player:player_id (id, name), assist:assist_id (id, name)`)
             .eq('match_id', matchId)
         if (error) throw error
-
-        await updateMatchScore(matchId)
 
         if (!data || data.length === 0) {
             container.innerHTML = '<div style="color:#7a8399;font-size:13px;">⚽ Голов пока нет</div>'
@@ -958,17 +1057,19 @@ async function loadMatchGoals(matchId) {
 }
 
 // ================================================================
-// АВТООБНОВЛЕНИЕ СЧЕТА
+// АВТООБНОВЛЕНИЕ СЧЕТА (ИСПРАВЛЕНО)
 // ================================================================
 
 async function updateMatchScore(matchId) {
     try {
+        // Получаем все голы матча
         const { data: goals, error } = await supabase
             .from('goals')
             .select(`id, player:player_id (id, name)`)
             .eq('match_id', matchId)
         if (error) throw error
 
+        // Получаем матч с командами
         const { data: match, error: matchError } = await supabase
             .from('matches')
             .select(`*, team_a:team_a_id (id, name), team_b:team_b_id (id, name)`)
@@ -976,6 +1077,7 @@ async function updateMatchScore(matchId) {
             .single()
         if (matchError) throw matchError
 
+        // Получаем игроков команд
         const { data: teamAPlayers } = await supabase
             .from('team_players')
             .select('player_id')
@@ -988,18 +1090,29 @@ async function updateMatchScore(matchId) {
         const teamAIds = teamAPlayers?.map(tp => tp.player_id) || []
         const teamBIds = teamBPlayers?.map(tp => tp.player_id) || []
 
+        // Считаем голы по командам
         let scoreA = 0, scoreB = 0
         goals?.forEach(g => {
-            if (teamAIds.includes(g.player_id)) scoreA++
-            else if (teamBIds.includes(g.player_id)) scoreB++
+            if (teamAIds.includes(g.player_id)) {
+                scoreA++
+            } else if (teamBIds.includes(g.player_id)) {
+                scoreB++
+            }
         })
 
-        await supabase.from('matches').update({ score_a: scoreA, score_b: scoreB }).eq('id', matchId)
+        // Обновляем счет в БД
+        await supabase
+            .from('matches')
+            .update({ score_a: scoreA, score_b: scoreB })
+            .eq('id', matchId)
 
+        // Обновляем отображение
         const displayA = document.getElementById('displayScoreA')
         const displayB = document.getElementById('displayScoreB')
         if (displayA) displayA.textContent = scoreA
         if (displayB) displayB.textContent = scoreB
+
+        console.log('✅ Счет обновлен:', { scoreA, scoreB })
 
     } catch (error) {
         console.error('Ошибка обновления счета:', error)
@@ -1007,7 +1120,7 @@ async function updateMatchScore(matchId) {
 }
 
 // ================================================================
-// ДОБАВЛЕНИЕ ГОЛА
+// ДОБАВЛЕНИЕ ГОЛА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
 // ================================================================
 
 window.addGoalToMatch = async function(matchId) {
@@ -1025,7 +1138,9 @@ window.addGoalToMatch = async function(matchId) {
             .insert({ match_id: matchId, player_id: playerId, assist_id: assistId || null })
         if (error) throw error
 
+        // Обновляем список голов и счет
         await loadMatchGoals(matchId)
+        
         document.getElementById('goalPlayer').value = ''
         document.getElementById('goalAssist').innerHTML = '<option value="">— Ассистент —</option>'
         alert('✅ Гол добавлен! Счет обновлен автоматически')
@@ -1035,7 +1150,7 @@ window.addGoalToMatch = async function(matchId) {
 }
 
 // ================================================================
-// УДАЛЕНИЕ ГОЛА
+// УДАЛЕНИЕ ГОЛА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
 // ================================================================
 
 window.deleteGoal = async function(id) {
@@ -1045,7 +1160,10 @@ window.deleteGoal = async function(id) {
         if (error) throw error
 
         const matchId = currentMatchData?.matchId
-        if (matchId) await loadMatchGoals(matchId)
+        if (matchId) {
+            // Обновляем список голов и счет
+            await loadMatchGoals(matchId)
+        }
         alert('✅ Гол удален! Счет обновлен автоматически')
     } catch (error) {
         alert('❌ Ошибка: ' + error.message)
