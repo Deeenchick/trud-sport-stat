@@ -735,16 +735,17 @@ window.selectTournament = async function(tournamentId) {
         container.innerHTML = `
             <div class="table-wrap">
                 <table class="stats-table">
-                    <thead><tr><th>#</th><th>Матч</th><th>Счет</th><th>Статус</th><th style="text-align:center;">Действия</th></tr></thead>
+                    <thead><tr><th>#</th><th>Матч</th><th style="text-align:center;">Счет</th><th style="text-align:center;">Действия</th></tr></thead>
                     <tbody>
                         ${data.map(m => `
                             <tr>
                                 <td>${m.match_order}</td>
                                 <td>${m.team_a?.name || '?'} vs ${m.team_b?.name || '?'}</td>
-                                <td>${m.status === 'finished' ? `${m.score_a} : ${m.score_b}` : '—'}</td>
-                                <td><span class="status-badge status-${m.status}">${m.status}</span></td>
+                                <td style="text-align:center;font-weight:700;color:#ffd700;font-size:18px;">
+                                    ${m.score_a !== null && m.score_b !== null ? `${m.score_a} : ${m.score_b}` : '—'}
+                                </td>
                                 <td style="text-align:center;">
-                                    <button onclick="editMatch('${m.id}')" class="btn-warning">✏️</button>
+                                    <button onclick="editMatch('${m.id}')" class="btn-warning">✏️ Редактировать</button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -835,10 +836,11 @@ window.editMatch = async function(id) {
 
     content.innerHTML = `
         <form id="editMatchForm">
+            <!-- Счет -->
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;text-align:center;padding:16px;background:rgba(255,215,0,0.05);border-radius:12px;">
                 <div>
                     <div style="color:#7a8399;font-size:12px;">${match.team_a?.name || '?'}</div>
-                    <div style="font-size:32px;font-weight:900;color:#ffd700;" id="displayScoreA">${match.score_a || 0}</div>
+                    <div class="match-score-display" id="displayScoreA">${match.score_a || 0}</div>
                 </div>
                 <div>
                     <div style="color:#7a8399;font-size:12px;">Счет</div>
@@ -846,21 +848,14 @@ window.editMatch = async function(id) {
                 </div>
                 <div>
                     <div style="color:#7a8399;font-size:12px;">${match.team_b?.name || '?'}</div>
-                    <div style="font-size:32px;font-weight:900;color:#ffd700;" id="displayScoreB">${match.score_b || 0}</div>
+                    <div class="match-score-display" id="displayScoreB">${match.score_b || 0}</div>
                 </div>
             </div>
 
-            <div style="margin-bottom:16px;">
-                <label style="display:block;color:#7a8399;margin-bottom:6px;">Статус матча</label>
-                <select id="editMatchStatus" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-                    <option value="scheduled" ${match.status === 'scheduled' ? 'selected' : ''}>📅 Запланирован</option>
-                    <option value="live" ${match.status === 'live' ? 'selected' : ''}>🟢 Идет</option>
-                    <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>✅ Завершен</option>
-                </select>
-                <div style="color:#7a8399;font-size:12px;margin-top:4px;">
-                    ⚠️ Статус турнира: <strong>${tournamentStatus}</strong>
-                    ${tournamentStatus === 'completed' ? ' (матчи не могут редактироваться)' : ''}
-                </div>
+            <!-- Статус турнира (информация) -->
+            <div style="margin-bottom:16px;padding:12px;background:rgba(255,215,0,0.03);border-radius:8px;text-align:center;color:#7a8399;font-size:14px;">
+                Статус турнира: <strong style="color:#ffd700;">${tournamentStatus === 'scheduled' ? '📅 Запланирован' : tournamentStatus === 'live' ? '🟢 Идет' : '✅ Завершен'}</strong>
+                ${tournamentStatus === 'completed' ? ' (редактирование заблокировано)' : ''}
             </div>
 
             ${tournamentStatus !== 'completed' ? `
@@ -913,30 +908,16 @@ window.editMatch = async function(id) {
         match: match
     }
 
-    // Загружаем голы и обновляем счет
     await loadMatchGoals(id)
 
-    // Проверяем, не завершен ли турнир
     if (tournamentStatus === 'completed') {
-        // Если турнир завершен, форма не отправляется
         return
     }
 
     document.getElementById('editMatchForm').onsubmit = async function(e) {
         e.preventDefault()
-        const status = document.getElementById('editMatchStatus').value
-
         try {
-            // Сначала обновляем счет по голам
             await updateMatchScore(id)
-
-            const { error } = await supabase
-                .from('matches')
-                .update({ status })
-                .eq('id', id)
-
-            if (error) throw error
-
             closeModal()
             if (currentTournamentId) await selectTournament(currentTournamentId)
             alert('✅ Матч обновлен!')
