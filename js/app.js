@@ -144,12 +144,18 @@ function renderTournaments() {
 // ДЕТАЛИ ТУРНИРА
 // ================================================================
 
+// ================================================================
+// ДЕТАЛИ ТУРНИРА (ОБНОВЛЕНО - БЕЗ СТАТУСА МАТЧА)
+// ================================================================
+
 async function showTournamentDetail(tournamentId) {
     const detailContainer = document.getElementById('tournamentDetail')
+    const container = document.getElementById('page-tournaments')
 
     if (state.currentTournamentId === tournamentId && detailContainer.style.display !== 'none') {
         detailContainer.style.display = 'none'
         state.currentTournamentId = null
+        container.dataset.savedHTML = container.innerHTML
         return
     }
 
@@ -165,6 +171,8 @@ async function showTournamentDetail(tournamentId) {
             <div id="detailContent"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div></div>
         </div>
     `
+
+    container.dataset.savedHTML = container.innerHTML
 
     try {
         const tournament = await tournamentService.getById(tournamentId)
@@ -209,6 +217,7 @@ async function showTournamentDetail(tournamentId) {
             `
         }
 
+        // ===== БЛОК С МАТЧАМИ (ИСПРАВЛЕН) =====
         if (matches && matches.length > 0) {
             html += `
                 <h4 style="margin:12px 0 8px;color:#b0baca;">Матчи</h4>
@@ -216,8 +225,8 @@ async function showTournamentDetail(tournamentId) {
                     ${matches.map(m => `
                         <div style="background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:8px;text-align:center;">
                             <div style="font-size:13px;color:#7a8399;">${m.team_a?.name || '?'} vs ${m.team_b?.name || '?'}</div>
-                            <div style="font-weight:700;color:#ffd700;font-size:16px;">
-                                ${m.status === 'finished' ? `${m.score_a} : ${m.score_b}` : '—'}
+                            <div style="font-weight:700;color:#ffd700;font-size:18px;">
+                                ${m.score_a !== null && m.score_b !== null ? `${m.score_a} : ${m.score_b}` : '—'}
                             </div>
                         </div>
                     `).join('')}
@@ -231,11 +240,6 @@ async function showTournamentDetail(tournamentId) {
         console.error('Ошибка загрузки деталей:', error)
         document.getElementById('detailContent').innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
     }
-}
-
-function closeTournamentDetail() {
-    document.getElementById('tournamentDetail').style.display = 'none'
-    state.currentTournamentId = null
 }
 
 // ================================================================
