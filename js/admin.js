@@ -1,21 +1,15 @@
-// js/admin.js
 // ================================================================
-// АДМИН-ПАНЕЛЬ (ПОЛНАЯ ВЕРСИЯ С ИСПРАВЛЕНИЯМИ)
+// БЛОК 1: ПОДКЛЮЧЕНИЕ И ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // ================================================================
 
 import { supabase } from './supabase.js'
 
-// ================================================================
-// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
-// ================================================================
-
 let currentTournamentId = null
 let currentMatchData = null
 let allPlayersCache = []
-let currentTeamSelections = {}
 
 // ================================================================
-// ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК
+// БЛОК 2: НАВИГАЦИЯ (ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК)
 // ================================================================
 
 document.querySelectorAll('[data-tab]').forEach(btn => {
@@ -34,13 +28,16 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
 })
 
 // ================================================================
-// ЗАГРУЗКА ИГРОКОВ
+// БЛОК 3: УПРАВЛЕНИЕ ИГРОКАМИ
 // ================================================================
 
 async function loadPlayers() {
     const container = document.getElementById('playersList')
     try {
-        const { data, error } = await supabase.from('players').select('*').order('name')
+        const { data, error } = await supabase
+            .from('players')
+            .select('*')
+            .order('name')
         if (error) throw error
         if (!data || data.length === 0) {
             container.innerHTML = '<div class="empty">Нет игроков</div>'
@@ -70,14 +67,101 @@ async function loadPlayers() {
     }
 }
 
+window.editPlayer = function(id, currentName) {
+    const modal = document.getElementById('modal')
+    const content = document.getElementById('modalContent')
+    document.getElementById('modalTitle').textContent = '✏️ Редактировать игрока'
+
+    content.innerHTML = `
+        <form id="editPlayerForm">
+            <div style="margin-bottom:16px;">
+                <label style="display:block;color:#7a8399;margin-bottom:6px;">Имя</label>
+                <input type="text" id="editPlayerName" value="${currentName}" required style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
+            </div>
+            <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
+                Сохранить
+            </button>
+        </form>
+    `
+
+    modal.style.display = 'flex'
+
+    document.getElementById('editPlayerForm').onsubmit = async function(e) {
+        e.preventDefault()
+        const name = document.getElementById('editPlayerName').value.trim()
+        if (!name) { alert('Введите имя'); return }
+        try {
+            const { error } = await supabase
+                .from('players')
+                .update({ name })
+                .eq('id', id)
+            if (error) throw error
+            closeModal()
+            await loadPlayers()
+            alert('✅ Игрок обновлен!')
+        } catch (error) {
+            alert('❌ Ошибка: ' + error.message)
+        }
+    }
+}
+
+window.deletePlayer = async function(id) {
+    if (!confirm('Удалить игрока?')) return
+    try {
+        await supabase.from('players').delete().eq('id', id)
+        await loadPlayers()
+        alert('✅ Игрок удален')
+    } catch (error) {
+        alert('❌ Ошибка: ' + error.message)
+    }
+}
+
+window.showAddPlayer = function() {
+    const modal = document.getElementById('modal')
+    const content = document.getElementById('modalContent')
+    document.getElementById('modalTitle').textContent = '➕ Добавить игрока'
+    content.innerHTML = `
+        <form id="addPlayerForm">
+            <div style="margin-bottom:16px;">
+                <label style="display:block;color:#7a8399;margin-bottom:6px;">Имя</label>
+                <input type="text" id="newPlayerName" required style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
+            </div>
+            <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
+                Сохранить
+            </button>
+        </form>
+    `
+    modal.style.display = 'flex'
+
+    document.getElementById('addPlayerForm').onsubmit = async function(e) {
+        e.preventDefault()
+        const name = document.getElementById('newPlayerName').value.trim()
+        if (!name) { alert('Введите имя'); return }
+        try {
+            const { error } = await supabase.from('players').insert({ name })
+            if (error) throw error
+            closeModal()
+            await loadPlayers()
+            alert('✅ Игрок добавлен!')
+        } catch (error) {
+            alert('❌ Ошибка: ' + error.message)
+        }
+    }
+}
+
 // ================================================================
-// ЗАГРУЗКА ТУРНИРОВ (С ОТОБРАЖЕНИЕМ СОСТАВОВ)
+// БЛОК 4: УПРАВЛЕНИЕ ТУРНИРАМИ
 // ================================================================
 
 async function loadTournaments() {
     const container = document.getElementById('tournamentsList')
     try {
-        const { data, error } = await supabase.from('tournaments').select('*').order('date', { ascending: false })
+        // СОРТИРОВКА: сначала новые (по убыванию created_at)
+        const { data, error } = await supabase
+            .from('tournaments')
+            .select('*')
+            .order('created_at', { ascending: false })
+
         if (error) throw error
         if (!data || data.length === 0) {
             container.innerHTML = '<div class="empty">Нет турниров</div>'
@@ -101,7 +185,6 @@ async function loadTournaments() {
         `
 
         for (const t of data) {
-            // Получаем команды и их составы
             const { data: teams, error: teamsError } = await supabase
                 .from('tournament_teams')
                 .select('*')
@@ -157,287 +240,16 @@ async function loadTournaments() {
     }
 }
 
-// ================================================================
-// ЗАГРУЗКА МАТЧЕЙ
-// ================================================================
-
-async function loadMatches() {
-    const container = document.getElementById('matchesList')
+window.deleteTournament = async function(id) {
+    if (!confirm('Удалить турнир?')) return
     try {
-        const { data: tournaments, error } = await supabase
-            .from('tournaments')
-            .select('*')
-            .order('date', { ascending: false })
-        if (error) throw error
-        if (!tournaments || tournaments.length === 0) {
-            container.innerHTML = '<div class="empty">Нет турниров</div>'
-            return
-        }
-        container.innerHTML = `
-            <div style="margin-bottom:16px;">
-                <select id="tournamentSelect" onchange="selectTournament(this.value)" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-                    <option value="">— Выберите турнир —</option>
-                    ${tournaments.map(t => `<option value="${t.id}">${t.name} (${t.date})</option>`).join('')}
-                </select>
-            </div>
-            <div id="matchesContainer"><div class="empty">Выберите турнир</div></div>
-        `
+        await supabase.from('tournaments').delete().eq('id', id)
+        await loadTournaments()
+        alert('✅ Турнир удален')
     } catch (error) {
-        container.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
+        alert('❌ Ошибка: ' + error.message)
     }
 }
-
-// ================================================================
-// УПРАВЛЕНИЕ СОСТАВАМИ КОМАНД (С ИСПРАВЛЕНИЯМИ)
-// ================================================================
-
-window.manageTeams = async function(tournamentId) {
-    // Получаем информацию о турнире
-    const { data: tournament, error: tourError } = await supabase
-        .from('tournaments')
-        .select('*')
-        .eq('id', tournamentId)
-        .single()
-    
-    if (tourError) {
-        alert('Ошибка загрузки турнира: ' + tourError.message)
-        return
-    }
-
-    // Получаем команды турнира
-    let { data: teams, error: teamsError } = await supabase
-        .from('tournament_teams')
-        .select('*')
-        .eq('tournament_id', tournamentId)
-        .order('name')
-
-    if (teamsError) {
-        alert('Ошибка загрузки команд: ' + teamsError.message)
-        return
-    }
-
-    // Если команд нет — создаем (А, Б, В)
-    if (!teams || teams.length === 0) {
-        const teamNames = ['А', 'Б', 'В']
-        for (const name of teamNames) {
-            const { error: insertError } = await supabase
-                .from('tournament_teams')
-                .insert({ tournament_id: tournamentId, name })
-            if (insertError) {
-                alert('Ошибка создания команды ' + name + ': ' + insertError.message)
-                return
-            }
-        }
-        
-        const { data: newTeams, error: reloadError } = await supabase
-            .from('tournament_teams')
-            .select('*')
-            .eq('tournament_id', tournamentId)
-            .order('name')
-        
-        if (reloadError) {
-            alert('Ошибка перезагрузки команд: ' + reloadError.message)
-            return
-        }
-        teams = newTeams
-    }
-
-    // Получаем всех игроков
-    const { data: allPlayers, error: playersError } = await supabase
-        .from('players')
-        .select('id, name')
-        .order('name')
-
-    if (playersError) {
-        alert('Ошибка загрузки игроков: ' + playersError.message)
-        return
-    }
-
-    // Получаем текущие составы для всех команд
-    let allTeamPlayers = {}
-    let allSelectedPlayerIds = new Set()
-
-    for (const team of teams) {
-        const { data, error } = await supabase
-            .from('team_players')
-            .select('player_id')
-            .eq('team_id', team.id)
-        
-        if (!error) {
-            const playerIds = data.map(tp => tp.player_id)
-            allTeamPlayers[team.id] = playerIds
-            playerIds.forEach(id => allSelectedPlayerIds.add(id))
-        } else {
-            allTeamPlayers[team.id] = []
-        }
-    }
-
-    // Строим модальное окно
-    const modal = document.getElementById('modal')
-    const content = document.getElementById('modalContent')
-    document.getElementById('modalTitle').textContent = `👥 Составы команд — ${tournament.name}`
-
-    let html = `
-        <div style="margin-bottom:16px;color:#7a8399;font-size:14px;">
-            Выберите по 5 игроков для каждой команды. 
-            <span style="color:#ffd700;">Игрок может быть только в одной команде.</span>
-        </div>
-        <form id="teamsForm">
-    `
-
-    for (const team of teams) {
-        const teamColor = team.name === 'А' ? 'team-A' : team.name === 'Б' ? 'team-B' : 'team-C'
-        html += `
-            <div style="margin-bottom:16px;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;">
-                <div style="font-weight:700;color:#ffd700;margin-bottom:8px;">
-                    <span class="team-badge ${teamColor}">Команда ${team.name}</span>
-                    <span style="color:#7a8399;font-weight:400;font-size:13px;margin-left:8px;">
-                        (выбрано: <span id="count-${team.id}">${allTeamPlayers[team.id]?.length || 0}</span>/5)
-                    </span>
-                </div>
-                <div class="player-select-grid">
-        `
-
-        for (const player of allPlayers) {
-            // Проверяем, выбран ли игрок в другой команде
-            const isSelectedInOtherTeam = allSelectedPlayerIds.has(player.id) && !allTeamPlayers[team.id]?.includes(player.id)
-            const isSelectedInThisTeam = allTeamPlayers[team.id]?.includes(player.id)
-            const checked = isSelectedInThisTeam ? 'checked' : ''
-            const disabled = isSelectedInOtherTeam ? 'disabled' : ''
-
-            html += `
-                <div class="player-select-item" style="${isSelectedInOtherTeam ? 'opacity:0.4;' : ''}">
-                    <input type="checkbox" 
-                           name="team_${team.id}" 
-                           value="${player.id}" 
-                           ${checked}
-                           ${disabled}
-                           onchange="updateTeamCount('${team.id}')">
-                    <label style="font-size:14px;cursor:${disabled ? 'not-allowed' : 'pointer'};">
-                        ${player.name}
-                        ${isSelectedInOtherTeam ? ' (в другой команде)' : ''}
-                    </label>
-                </div>
-            `
-        }
-
-        html += `
-                </div>
-            </div>
-        `
-    }
-
-    html += `
-            <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
-                Сохранить составы
-            </button>
-        </form>
-    `
-
-    content.innerHTML = html
-    modal.style.display = 'flex'
-
-    // Сохраняем данные для onchange
-    window.currentTeamIds = teams.map(t => t.id)
-    window.allPlayersData = allPlayers
-    window.currentTeamPlayers = allTeamPlayers
-    window.allSelectedIds = allSelectedPlayerIds
-
-    // Настраиваем валидацию формы
-    document.getElementById('teamsForm').onsubmit = async function(e) {
-        e.preventDefault()
-        
-        // Проверяем, что у каждой команды ровно 5 игроков
-        let hasError = false
-        const teamSelections = {}
-
-        for (const team of teams) {
-            const checkboxes = document.querySelectorAll(`input[name="team_${team.id}"]:checked`)
-            const playerIds = Array.from(checkboxes).map(cb => cb.value)
-            teamSelections[team.id] = playerIds
-
-            if (playerIds.length !== 5) {
-                alert(`Для команды ${team.name} нужно выбрать ровно 5 игроков (сейчас ${playerIds.length})`)
-                hasError = true
-                break
-            }
-        }
-
-        if (hasError) return
-
-        // Проверяем, что игроки не пересекаются
-        const allSelected = []
-        for (const team of teams) {
-            allSelected.push(...teamSelections[team.id])
-        }
-        const uniqueSelected = new Set(allSelected)
-        if (uniqueSelected.size !== allSelected.length) {
-            alert('Один игрок не может быть в двух командах одновременно!')
-            return
-        }
-
-        // Сохраняем составы
-        for (const team of teams) {
-            // Удаляем старые связи
-            await supabase
-                .from('team_players')
-                .delete()
-                .eq('team_id', team.id)
-
-            // Добавляем новые
-            for (const playerId of teamSelections[team.id]) {
-                await supabase
-                    .from('team_players')
-                    .insert({ team_id: team.id, player_id: playerId })
-            }
-        }
-
-        alert('✅ Составы команд сохранены!')
-        closeModal()
-        loadTournaments()
-    }
-}
-
-// Обновление счетчика выбранных игроков
-window.updateTeamCount = function(teamId) {
-    const checkboxes = document.querySelectorAll(`input[name="team_${teamId}"]:checked`)
-    const countEl = document.getElementById(`count-${teamId}`)
-    if (countEl) {
-        const count = checkboxes.length
-        countEl.textContent = count
-        countEl.style.color = count === 5 ? '#5dca8a' : '#ffd700'
-    }
-
-    // Обновляем доступность чекбоксов: блокируем игроков, выбранных в других командах
-    const allChecked = {}
-    document.querySelectorAll('.player-select-item input[type="checkbox"]:checked').forEach(cb => {
-        allChecked[cb.value] = true
-    })
-
-    document.querySelectorAll('.player-select-item input[type="checkbox"]').forEach(cb => {
-        const isChecked = cb.checked
-        const teamIdFromName = cb.name.replace('team_', '')
-        const isInCurrentTeam = teamIdFromName === teamId.toString()
-        
-        if (!isChecked && allChecked[cb.value] && !isInCurrentTeam) {
-            // Если игрок выбран в другой команде — блокируем
-            cb.disabled = true
-            cb.closest('.player-select-item').style.opacity = '0.4'
-            cb.closest('.player-select-item').querySelector('label').textContent = 
-                cb.closest('.player-select-item').querySelector('label').textContent.replace(' (в другой команде)', '') + ' (в другой команде)'
-        } else if (!allChecked[cb.value]) {
-            // Если игрок нигде не выбран — разблокируем
-            cb.disabled = false
-            cb.closest('.player-select-item').style.opacity = '1'
-            cb.closest('.player-select-item').querySelector('label').textContent = 
-                cb.closest('.player-select-item').querySelector('label').textContent.replace(' (в другой команде)', '')
-        }
-    })
-}
-
-// ================================================================
-// СОЗДАНИЕ ТУРНИРА
-// ================================================================
 
 window.showAddTournament = function() {
     const modal = document.getElementById('modal')
@@ -468,7 +280,6 @@ window.showAddTournament = function() {
 
     document.getElementById('addTournamentForm').onsubmit = async function(e) {
         e.preventDefault()
-        
         const name = document.getElementById('newTournamentName').value.trim()
         const date = document.getElementById('newTournamentDate').value
         const time = document.getElementById('newTournamentTime').value
@@ -487,7 +298,6 @@ window.showAddTournament = function() {
 
             if (tourError) throw tourError
 
-            // Создаем 3 команды
             const teamNames = ['А', 'Б', 'В']
             for (const teamName of teamNames) {
                 await supabase
@@ -498,16 +308,12 @@ window.showAddTournament = function() {
             closeModal()
             await loadTournaments()
             alert(`✅ Турнир "${name}" создан! Теперь распределите игроков по командам.`)
-            
+
         } catch (error) {
             alert('❌ Ошибка: ' + error.message)
         }
     }
 }
-
-// ================================================================
-// РЕДАКТИРОВАНИЕ ТУРНИРА
-// ================================================================
 
 window.editTournament = async function(id) {
     const { data, error } = await supabase
@@ -556,7 +362,6 @@ window.editTournament = async function(id) {
 
     document.getElementById('editTournamentForm').onsubmit = async function(e) {
         e.preventDefault()
-        
         const name = document.getElementById('editName').value.trim()
         const date = document.getElementById('editDate').value
         const time = document.getElementById('editTime').value
@@ -580,11 +385,221 @@ window.editTournament = async function(id) {
 }
 
 // ================================================================
-// ГЕНЕРАЦИЯ РАСПИСАНИЯ
+// БЛОК 5: УПРАВЛЕНИЕ СОСТАВАМИ КОМАНД
+// ================================================================
+
+window.manageTeams = async function(tournamentId) {
+    const { data: tournament, error: tourError } = await supabase
+        .from('tournaments')
+        .select('*')
+        .eq('id', tournamentId)
+        .single()
+
+    if (tourError) {
+        alert('Ошибка загрузки турнира: ' + tourError.message)
+        return
+    }
+
+    let { data: teams, error: teamsError } = await supabase
+        .from('tournament_teams')
+        .select('*')
+        .eq('tournament_id', tournamentId)
+        .order('name')
+
+    if (teamsError) {
+        alert('Ошибка загрузки команд: ' + teamsError.message)
+        return
+    }
+
+    if (!teams || teams.length === 0) {
+        const teamNames = ['А', 'Б', 'В']
+        for (const name of teamNames) {
+            await supabase
+                .from('tournament_teams')
+                .insert({ tournament_id: tournamentId, name })
+        }
+        const { data: newTeams, error: reloadError } = await supabase
+            .from('tournament_teams')
+            .select('*')
+            .eq('tournament_id', tournamentId)
+            .order('name')
+        if (reloadError) {
+            alert('Ошибка перезагрузки команд: ' + reloadError.message)
+            return
+        }
+        teams = newTeams
+    }
+
+    const { data: allPlayers, error: playersError } = await supabase
+        .from('players')
+        .select('id, name')
+        .order('name')
+
+    if (playersError) {
+        alert('Ошибка загрузки игроков: ' + playersError.message)
+        return
+    }
+
+    let allTeamPlayers = {}
+    let allSelectedPlayerIds = new Set()
+
+    for (const team of teams) {
+        const { data, error } = await supabase
+            .from('team_players')
+            .select('player_id')
+            .eq('team_id', team.id)
+        if (!error) {
+            const playerIds = data.map(tp => tp.player_id)
+            allTeamPlayers[team.id] = playerIds
+            playerIds.forEach(id => allSelectedPlayerIds.add(id))
+        } else {
+            allTeamPlayers[team.id] = []
+        }
+    }
+
+    const modal = document.getElementById('modal')
+    const content = document.getElementById('modalContent')
+    document.getElementById('modalTitle').textContent = `👥 Составы команд — ${tournament.name}`
+
+    let html = `
+        <div style="margin-bottom:16px;color:#7a8399;font-size:14px;">
+            Выберите по 5 игроков для каждой команды.
+            <span style="color:#ffd700;">Игрок может быть только в одной команде.</span>
+        </div>
+        <form id="teamsForm">
+    `
+
+    for (const team of teams) {
+        const teamColor = team.name === 'А' ? 'team-A' : team.name === 'Б' ? 'team-B' : 'team-C'
+        html += `
+            <div style="margin-bottom:16px;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;">
+                <div style="font-weight:700;color:#ffd700;margin-bottom:8px;">
+                    <span class="team-badge ${teamColor}">Команда ${team.name}</span>
+                    <span style="color:#7a8399;font-weight:400;font-size:13px;margin-left:8px;">
+                        (выбрано: <span id="count-${team.id}">${allTeamPlayers[team.id]?.length || 0}</span>/5)
+                    </span>
+                </div>
+                <div class="player-select-grid">
+        `
+
+        for (const player of allPlayers) {
+            const isSelectedInOtherTeam = allSelectedPlayerIds.has(player.id) && !allTeamPlayers[team.id]?.includes(player.id)
+            const isSelectedInThisTeam = allTeamPlayers[team.id]?.includes(player.id)
+            const checked = isSelectedInThisTeam ? 'checked' : ''
+            const disabled = isSelectedInOtherTeam ? 'disabled' : ''
+
+            html += `
+                <div class="player-select-item" style="${isSelectedInOtherTeam ? 'opacity:0.4;' : ''}">
+                    <input type="checkbox" 
+                           name="team_${team.id}" 
+                           value="${player.id}" 
+                           ${checked}
+                           ${disabled}
+                           onchange="updateTeamCount('${team.id}')">
+                    <label style="font-size:14px;cursor:${disabled ? 'not-allowed' : 'pointer'};">
+                        ${player.name}
+                        ${isSelectedInOtherTeam ? ' (в другой команде)' : ''}
+                    </label>
+                </div>
+            `
+        }
+
+        html += `
+                </div>
+            </div>
+        `
+    }
+
+    html += `
+            <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
+                Сохранить составы
+            </button>
+        </form>
+    `
+
+    content.innerHTML = html
+    modal.style.display = 'flex'
+
+    window.currentTeamIds = teams.map(t => t.id)
+
+    document.getElementById('teamsForm').onsubmit = async function(e) {
+        e.preventDefault()
+
+        const teamSelections = {}
+        for (const team of teams) {
+            const checkboxes = document.querySelectorAll(`input[name="team_${team.id}"]:checked`)
+            const playerIds = Array.from(checkboxes).map(cb => cb.value)
+            teamSelections[team.id] = playerIds
+
+            if (playerIds.length !== 5) {
+                alert(`Для команды ${team.name} нужно выбрать ровно 5 игроков (сейчас ${playerIds.length})`)
+                return
+            }
+        }
+
+        const allSelected = []
+        for (const team of teams) {
+            allSelected.push(...teamSelections[team.id])
+        }
+        const uniqueSelected = new Set(allSelected)
+        if (uniqueSelected.size !== allSelected.length) {
+            alert('Один игрок не может быть в двух командах одновременно!')
+            return
+        }
+
+        for (const team of teams) {
+            await supabase
+                .from('team_players')
+                .delete()
+                .eq('team_id', team.id)
+
+            for (const playerId of teamSelections[team.id]) {
+                await supabase
+                    .from('team_players')
+                    .insert({ team_id: team.id, player_id: playerId })
+            }
+        }
+
+        alert('✅ Составы команд сохранены!')
+        closeModal()
+        loadTournaments()
+    }
+}
+
+window.updateTeamCount = function(teamId) {
+    const checkboxes = document.querySelectorAll(`input[name="team_${teamId}"]:checked`)
+    const countEl = document.getElementById(`count-${teamId}`)
+    if (countEl) {
+        const count = checkboxes.length
+        countEl.textContent = count
+        countEl.style.color = count === 5 ? '#5dca8a' : '#ffd700'
+    }
+
+    const allChecked = {}
+    document.querySelectorAll('.player-select-item input[type="checkbox"]:checked').forEach(cb => {
+        allChecked[cb.value] = true
+    })
+
+    document.querySelectorAll('.player-select-item input[type="checkbox"]').forEach(cb => {
+        const isChecked = cb.checked
+        const teamIdFromName = cb.name.replace('team_', '')
+        const isInCurrentTeam = teamIdFromName === teamId.toString()
+
+        if (!isChecked && allChecked[cb.value] && !isInCurrentTeam) {
+            cb.disabled = true
+            cb.closest('.player-select-item').style.opacity = '0.4'
+        } else if (!allChecked[cb.value]) {
+            cb.disabled = false
+            cb.closest('.player-select-item').style.opacity = '1'
+        }
+    })
+}
+
+// ================================================================
+// БЛОК 6: ГЕНЕРАЦИЯ РАСПИСАНИЯ
 // ================================================================
 
 window.generateSchedule = async function(tournamentId) {
-    // Проверяем, есть ли команды
     const { data: teams, error: teamsError } = await supabase
         .from('tournament_teams')
         .select('id')
@@ -600,7 +615,6 @@ window.generateSchedule = async function(tournamentId) {
         return
     }
 
-    // Проверяем, есть ли игроки в командах
     let hasPlayers = false
     for (const team of teams) {
         const { data: players, error } = await supabase
@@ -608,7 +622,6 @@ window.generateSchedule = async function(tournamentId) {
             .select('id')
             .eq('team_id', team.id)
             .limit(1)
-        
         if (!error && players && players.length > 0) {
             hasPlayers = true
             break
@@ -620,7 +633,6 @@ window.generateSchedule = async function(tournamentId) {
         return
     }
 
-    // Проверяем, есть ли уже матчи
     const { data: existingMatches, error: matchError } = await supabase
         .from('matches')
         .select('id')
@@ -636,16 +648,10 @@ window.generateSchedule = async function(tournamentId) {
         if (!confirm('В этом турнире уже есть матчи. Создать заново? (старые матчи будут удалены)')) {
             return
         }
-        
-        const { error: deleteError } = await supabase
+        await supabase
             .from('matches')
             .delete()
             .eq('tournament_id', tournamentId)
-        
-        if (deleteError) {
-            alert('Ошибка удаления старых матчей: ' + deleteError.message)
-            return
-        }
     }
 
     if (!confirm('Создать расписание (12 матчей) для этого турнира?')) return
@@ -667,114 +673,37 @@ window.generateSchedule = async function(tournamentId) {
 }
 
 // ================================================================
-// РЕДАКТИРОВАНИЕ ИГРОКА
+// БЛОК 7: УПРАВЛЕНИЕ МАТЧАМИ
 // ================================================================
 
-window.editPlayer = function(id, currentName) {
-    const modal = document.getElementById('modal')
-    const content = document.getElementById('modalContent')
-    document.getElementById('modalTitle').textContent = '✏️ Редактировать игрока'
-
-    content.innerHTML = `
-        <form id="editPlayerForm">
-            <div style="margin-bottom:16px;">
-                <label style="display:block;color:#7a8399;margin-bottom:6px;">Имя</label>
-                <input type="text" id="editPlayerName" value="${currentName}" required style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-            </div>
-            <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
-                Сохранить
-            </button>
-        </form>
-    `
-
-    modal.style.display = 'flex'
-
-    document.getElementById('editPlayerForm').onsubmit = async function(e) {
-        e.preventDefault()
-        const name = document.getElementById('editPlayerName').value.trim()
-        if (!name) { alert('Введите имя'); return }
-        
-        try {
-            const { error } = await supabase
-                .from('players')
-                .update({ name })
-                .eq('id', id)
-            if (error) throw error
-            closeModal()
-            await loadPlayers()
-            alert('✅ Игрок обновлен!')
-        } catch (error) {
-            alert('❌ Ошибка: ' + error.message)
-        }
-    }
-}
-
-// ================================================================
-// ДОБАВЛЕНИЕ ИГРОКА
-// ================================================================
-
-window.showAddPlayer = function() {
-    const modal = document.getElementById('modal')
-    const content = document.getElementById('modalContent')
-    document.getElementById('modalTitle').textContent = '➕ Добавить игрока'
-    content.innerHTML = `
-        <form id="addPlayerForm">
-            <div style="margin-bottom:16px;">
-                <label style="display:block;color:#7a8399;margin-bottom:6px;">Имя</label>
-                <input type="text" id="newPlayerName" required style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
-            </div>
-            <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
-                Сохранить
-            </button>
-        </form>
-    `
-    modal.style.display = 'flex'
-
-    document.getElementById('addPlayerForm').onsubmit = async function(e) {
-        e.preventDefault()
-        const name = document.getElementById('newPlayerName').value.trim()
-        if (!name) { alert('Введите имя'); return }
-        try {
-            const { error } = await supabase.from('players').insert({ name })
-            if (error) throw error
-            closeModal()
-            await loadPlayers()
-            alert('✅ Игрок добавлен!')
-        } catch (error) {
-            alert('❌ Ошибка: ' + error.message)
-        }
-    }
-}
-
-// ================================================================
-// УДАЛЕНИЕ
-// ================================================================
-
-window.deletePlayer = async function(id) {
-    if (!confirm('Удалить игрока?')) return
+async function loadMatches() {
+    const container = document.getElementById('matchesList')
     try {
-        await supabase.from('players').delete().eq('id', id)
-        await loadPlayers()
-        alert('✅ Игрок удален')
+        // СОРТИРОВКА: сначала новые (по убыванию created_at)
+        const { data: tournaments, error } = await supabase
+            .from('tournaments')
+            .select('*')
+            .order('created_at', { ascending: false })
+
+        if (error) throw error
+        if (!tournaments || tournaments.length === 0) {
+            container.innerHTML = '<div class="empty">Нет турниров</div>'
+            return
+        }
+
+        container.innerHTML = `
+            <div style="margin-bottom:16px;">
+                <select id="tournamentSelect" onchange="selectTournament(this.value)" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
+                    <option value="">— Выберите турнир —</option>
+                    ${tournaments.map(t => `<option value="${t.id}">${t.name} (${t.date})</option>`).join('')}
+                </select>
+            </div>
+            <div id="matchesContainer"><div class="empty">Выберите турнир</div></div>
+        `
     } catch (error) {
-        alert('❌ Ошибка: ' + error.message)
+        container.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
     }
 }
-
-window.deleteTournament = async function(id) {
-    if (!confirm('Удалить турнир?')) return
-    try {
-        await supabase.from('tournaments').delete().eq('id', id)
-        await loadTournaments()
-        alert('✅ Турнир удален')
-    } catch (error) {
-        alert('❌ Ошибка: ' + error.message)
-    }
-}
-
-// ================================================================
-// ВЫБОР ТУРНИРА ДЛЯ МАТЧЕЙ
-// ================================================================
 
 window.selectTournament = async function(tournamentId) {
     const container = document.getElementById('matchesContainer')
@@ -783,13 +712,16 @@ window.selectTournament = async function(tournamentId) {
         container.innerHTML = '<div class="empty">Выберите турнир</div>'
         return
     }
+
     try {
         const { data, error } = await supabase
             .from('matches')
             .select(`*, team_a:team_a_id (id, name), team_b:team_b_id (id, name)`)
             .eq('tournament_id', tournamentId)
             .order('match_order')
+
         if (error) throw error
+
         if (!data || data.length === 0) {
             container.innerHTML = `
                 <div class="empty">Нет матчей в этом турнире</div>
@@ -799,6 +731,7 @@ window.selectTournament = async function(tournamentId) {
             `
             return
         }
+
         container.innerHTML = `
             <div class="table-wrap">
                 <table class="stats-table">
@@ -825,17 +758,17 @@ window.selectTournament = async function(tournamentId) {
 }
 
 // ================================================================
-// РЕДАКТИРОВАНИЕ МАТЧА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
+// БЛОК 8: РЕДАКТИРОВАНИЕ МАТЧА (С АВТООБНОВЛЕНИЕМ СЧЕТА И СТАТУСА)
 // ================================================================
 
 window.editMatch = async function(id) {
-    // Получаем данные матча
     const { data: match, error: matchError } = await supabase
         .from('matches')
         .select(`
             *,
             team_a:team_a_id (id, name),
-            team_b:team_b_id (id, name)
+            team_b:team_b_id (id, name),
+            tournament:tournament_id (id, status)
         `)
         .eq('id', id)
         .single()
@@ -856,7 +789,6 @@ window.editMatch = async function(id) {
         return
     }
 
-    // Получаем игроков команды Б
     const { data: teamBPlayers, error: teamBError } = await supabase
         .from('team_players')
         .select(`player_id, players:player_id (id, name)`)
@@ -867,7 +799,6 @@ window.editMatch = async function(id) {
         return
     }
 
-    // Собираем всех игроков матча
     const allPlayers = []
     teamAPlayers.forEach(tp => {
         if (tp.players) {
@@ -899,6 +830,9 @@ window.editMatch = async function(id) {
     const content = document.getElementById('modalContent')
     document.getElementById('modalTitle').textContent = `✏️ Редактировать матч: ${match.team_a?.name} vs ${match.team_b?.name}`
 
+    // Получаем статус турнира
+    const tournamentStatus = match.tournament?.status || 'scheduled'
+
     content.innerHTML = `
         <form id="editMatchForm">
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;text-align:center;padding:16px;background:rgba(255,215,0,0.05);border-radius:12px;">
@@ -915,7 +849,7 @@ window.editMatch = async function(id) {
                     <div style="font-size:32px;font-weight:900;color:#ffd700;" id="displayScoreB">${match.score_b || 0}</div>
                 </div>
             </div>
-            
+
             <div style="margin-bottom:16px;">
                 <label style="display:block;color:#7a8399;margin-bottom:6px;">Статус матча</label>
                 <select id="editMatchStatus" style="width:100%;padding:10px;background:#141a24;border:1px solid #1e2530;border-radius:8px;color:#e8edf5;">
@@ -923,8 +857,13 @@ window.editMatch = async function(id) {
                     <option value="live" ${match.status === 'live' ? 'selected' : ''}>🟢 Идет</option>
                     <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>✅ Завершен</option>
                 </select>
+                <div style="color:#7a8399;font-size:12px;margin-top:4px;">
+                    ⚠️ Статус турнира: <strong>${tournamentStatus}</strong>
+                    ${tournamentStatus === 'completed' ? ' (матчи не могут редактироваться)' : ''}
+                </div>
             </div>
 
+            ${tournamentStatus !== 'completed' ? `
             <div style="margin-bottom:16px;padding:12px;background:rgba(255,215,0,0.05);border-radius:8px;">
                 <label style="display:block;color:#7a8399;margin-bottom:6px;">⚽ Добавить гол</label>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -942,20 +881,30 @@ window.editMatch = async function(id) {
                 </div>
                 <button type="button" onclick="addGoalToMatch('${id}')" class="btn-success" style="padding:6px 16px;">➕ Добавить гол</button>
             </div>
+            ` : `
+            <div style="margin-bottom:16px;padding:12px;background:rgba(255,0,0,0.05);border-radius:8px;color:#e85a5a;text-align:center;">
+                ⚠️ Турнир завершен. Редактирование матчей недоступно.
+            </div>
+            `}
 
             <div id="matchGoalsList" style="margin-bottom:16px;">
                 <div style="color:#7a8399;font-size:13px;">Загрузка голов...</div>
             </div>
 
+            ${tournamentStatus !== 'completed' ? `
             <button type="submit" style="width:100%;padding:12px;background:#ffd700;color:#0b0e12;border:none;border-radius:8px;font-weight:700;cursor:pointer;">
                 Сохранить изменения
             </button>
+            ` : `
+            <div style="width:100%;padding:12px;background:#2a2a2a;color:#7a8399;border:none;border-radius:8px;text-align:center;font-weight:700;">
+                ❌ Редактирование недоступно
+            </div>
+            `}
         </form>
     `
 
     modal.style.display = 'flex'
 
-    // Сохраняем данные
     currentMatchData = {
         matchId: id,
         allPlayers: allPlayers,
@@ -967,21 +916,27 @@ window.editMatch = async function(id) {
     // Загружаем голы и обновляем счет
     await loadMatchGoals(id)
 
+    // Проверяем, не завершен ли турнир
+    if (tournamentStatus === 'completed') {
+        // Если турнир завершен, форма не отправляется
+        return
+    }
+
     document.getElementById('editMatchForm').onsubmit = async function(e) {
         e.preventDefault()
         const status = document.getElementById('editMatchStatus').value
-        
+
         try {
-            // Сначала обновляем счет, затем статус
+            // Сначала обновляем счет по голам
             await updateMatchScore(id)
-            
+
             const { error } = await supabase
                 .from('matches')
                 .update({ status })
                 .eq('id', id)
-            
+
             if (error) throw error
-            
+
             closeModal()
             if (currentTournamentId) await selectTournament(currentTournamentId)
             alert('✅ Матч обновлен!')
@@ -992,24 +947,24 @@ window.editMatch = async function(id) {
 }
 
 // ================================================================
-// ОБНОВЛЕНИЕ АССИСТЕНТОВ
+// БЛОК 9: ГОЛЫ (АВТООБНОВЛЕНИЕ СЧЕТА)
 // ================================================================
 
 window.updateAssistOptions = function() {
     const playerSelect = document.getElementById('goalPlayer')
     const assistSelect = document.getElementById('goalAssist')
     const selectedPlayerId = playerSelect.value
-    
+
     assistSelect.innerHTML = '<option value="">— Ассистент —</option>'
     if (!selectedPlayerId || !currentMatchData) return
-    
+
     const player = currentMatchData.allPlayers.find(p => p.id === selectedPlayerId)
     if (!player) return
-    
+
     const teamPlayers = player.team === 'A' 
         ? currentMatchData.teamAPlayers 
         : currentMatchData.teamBPlayers
-    
+
     currentMatchData.allPlayers
         .filter(p => teamPlayers.includes(p.id) && p.id !== selectedPlayerId)
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -1021,10 +976,6 @@ window.updateAssistOptions = function() {
         })
 }
 
-// ================================================================
-// ЗАГРУЗКА ГОЛОВ (С АВТООБНОВЛЕНИЕМ СЧЕТА)
-// ================================================================
-
 async function loadMatchGoals(matchId) {
     const container = document.getElementById('matchGoalsList')
     try {
@@ -1035,6 +986,7 @@ async function loadMatchGoals(matchId) {
             .from('goals')
             .select(`id, player:player_id (id, name), assist:assist_id (id, name)`)
             .eq('match_id', matchId)
+
         if (error) throw error
 
         if (!data || data.length === 0) {
@@ -1056,32 +1008,28 @@ async function loadMatchGoals(matchId) {
     }
 }
 
-// ================================================================
-// АВТООБНОВЛЕНИЕ СЧЕТА (ИСПРАВЛЕНО)
-// ================================================================
-
 async function updateMatchScore(matchId) {
     try {
-        // Получаем все голы матча
         const { data: goals, error } = await supabase
             .from('goals')
             .select(`id, player:player_id (id, name)`)
             .eq('match_id', matchId)
+
         if (error) throw error
 
-        // Получаем матч с командами
         const { data: match, error: matchError } = await supabase
             .from('matches')
             .select(`*, team_a:team_a_id (id, name), team_b:team_b_id (id, name)`)
             .eq('id', matchId)
             .single()
+
         if (matchError) throw matchError
 
-        // Получаем игроков команд
         const { data: teamAPlayers } = await supabase
             .from('team_players')
             .select('player_id')
             .eq('team_id', match.team_a_id)
+
         const { data: teamBPlayers } = await supabase
             .from('team_players')
             .select('player_id')
@@ -1090,7 +1038,6 @@ async function updateMatchScore(matchId) {
         const teamAIds = teamAPlayers?.map(tp => tp.player_id) || []
         const teamBIds = teamBPlayers?.map(tp => tp.player_id) || []
 
-        // Считаем голы по командам
         let scoreA = 0, scoreB = 0
         goals?.forEach(g => {
             if (teamAIds.includes(g.player_id)) {
@@ -1100,28 +1047,20 @@ async function updateMatchScore(matchId) {
             }
         })
 
-        // Обновляем счет в БД
         await supabase
             .from('matches')
             .update({ score_a: scoreA, score_b: scoreB })
             .eq('id', matchId)
 
-        // Обновляем отображение
         const displayA = document.getElementById('displayScoreA')
         const displayB = document.getElementById('displayScoreB')
         if (displayA) displayA.textContent = scoreA
         if (displayB) displayB.textContent = scoreB
 
-        console.log('✅ Счет обновлен:', { scoreA, scoreB })
-
     } catch (error) {
         console.error('Ошибка обновления счета:', error)
     }
 }
-
-// ================================================================
-// ДОБАВЛЕНИЕ ГОЛА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
-// ================================================================
 
 window.addGoalToMatch = async function(matchId) {
     const playerId = document.getElementById('goalPlayer').value
@@ -1136,11 +1075,11 @@ window.addGoalToMatch = async function(matchId) {
         const { error } = await supabase
             .from('goals')
             .insert({ match_id: matchId, player_id: playerId, assist_id: assistId || null })
+
         if (error) throw error
 
-        // Обновляем список голов и счет
         await loadMatchGoals(matchId)
-        
+
         document.getElementById('goalPlayer').value = ''
         document.getElementById('goalAssist').innerHTML = '<option value="">— Ассистент —</option>'
         alert('✅ Гол добавлен! Счет обновлен автоматически')
@@ -1148,10 +1087,6 @@ window.addGoalToMatch = async function(matchId) {
         alert('❌ Ошибка: ' + error.message)
     }
 }
-
-// ================================================================
-// УДАЛЕНИЕ ГОЛА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
-// ================================================================
 
 window.deleteGoal = async function(id) {
     if (!confirm('Удалить гол?')) return
@@ -1161,7 +1096,6 @@ window.deleteGoal = async function(id) {
 
         const matchId = currentMatchData?.matchId
         if (matchId) {
-            // Обновляем список голов и счет
             await loadMatchGoals(matchId)
         }
         alert('✅ Гол удален! Счет обновлен автоматически')
@@ -1171,7 +1105,7 @@ window.deleteGoal = async function(id) {
 }
 
 // ================================================================
-// МОДАЛЬНОЕ ОКНО
+// БЛОК 10: МОДАЛЬНОЕ ОКНО
 // ================================================================
 
 window.closeModal = function() {
@@ -1183,7 +1117,7 @@ document.getElementById('modal').addEventListener('click', function(e) {
 })
 
 // ================================================================
-// ЗАПУСК
+// БЛОК 11: ЗАПУСК
 // ================================================================
 
 loadPlayers()
@@ -1191,3 +1125,7 @@ loadTournaments()
 loadMatches()
 
 console.log('✅ Админ-панель загружена')
+console.log('📌 Особенности:')
+console.log('  - Турниры отсортированы по дате создания (сначала новые)')
+console.log('  - Счет обновляется автоматически при добавлении/удалении голов')
+console.log('  - Статус матча можно менять, но если турнир завершен - редактирование заблокировано')
