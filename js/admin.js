@@ -976,18 +976,36 @@ window.updateAssistOptions = function() {
         })
 }
 
+// ================================================================
+// ЗАГРУЗКА ГОЛОВ (С АВТООБНОВЛЕНИЕМ СЧЕТА)
+// ================================================================
+
 async function loadMatchGoals(matchId) {
+    console.log('🔄 loadMatchGoals вызван для матча:', matchId)
+    
     const container = document.getElementById('matchGoalsList')
+    if (!container) {
+        console.warn('⚠️ Элемент matchGoalsList не найден')
+        return
+    }
+    
     try {
         // Сначала обновляем счет
         await updateMatchScore(matchId)
 
+        // Загружаем список голов
         const { data, error } = await supabase
             .from('goals')
             .select(`id, player:player_id (id, name), assist:assist_id (id, name)`)
             .eq('match_id', matchId)
 
-        if (error) throw error
+        if (error) {
+            console.error('❌ Ошибка загрузки голов:', error)
+            container.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
+            return
+        }
+
+        console.log('📊 Загружено голов:', data?.length || 0)
 
         if (!data || data.length === 0) {
             container.innerHTML = '<div style="color:#7a8399;font-size:13px;">⚽ Голов пока нет</div>'
@@ -1003,42 +1021,81 @@ async function loadMatchGoals(matchId) {
                 </div>
             `).join('')}
         `
+        
+        console.log('✅ Список голов обновлен')
+
     } catch (error) {
+        console.error('❌ Ошибка в loadMatchGoals:', error)
         container.innerHTML = `<div class="error">Ошибка: ${error.message}</div>`
     }
 }
 
 async function updateMatchScore(matchId) {
+    console.log('🔄 updateMatchScore вызван для матча:', matchId)
+    
     try {
-        const { data: goals, error } = await supabase
+        // 1. Получаем все голы матча
+        const { data: goals, error: goalsError } = await supabase
             .from('goals')
-            .select(`id, player:player_id (id, name)`)
+            .select(`id, player_id`)
             .eq('match_id', matchId)
 
-        if (error) throw error
+        if (goalsError) {
+            console.error('❌ Ошибка загрузки голов:', goalsError)
+            return
+        }
 
+        console.log('📊 Найдено голов:', goals?.length || 0)
+
+        // 2. Получаем матч с командами
         const { data: match, error: matchError } = await supabase
             .from('matches')
-            .select(`*, team_a:team_a_id (id, name), team_b:team_b_id (id, name)`)
+            .select(`
+                *,
+                team_a:team_a_id (id, name),
+                team_b:team_b_id (id, name)
+            `)
             .eq('id', matchId)
             .single()
 
-        if (matchError) throw matchError
+        if (matchError) {
+            console.error('❌ Ошибка загрузки матча:', matchError)
+            return
+        }
 
-        const { data: teamAPlayers } = await supabase
+        console.log('📊 Матч:', match.team_a?.name, 'vs', match.team_b?.name)
+
+        // 3. Получаем игроков команды А
+        const { data: teamAPlayers, error: teamAError } = await supabase
             .from('team_players')
             .select('player_id')
             .eq('team_id', match.team_a_id)
 
-        const { data: teamBPlayers } = await supabase
+        if (teamAError) {
+            console.error('❌ Ошибка загрузки игроков команды А:', teamAError)
+            return
+        }
+
+        // 4. Получаем игроков команды Б
+        const { data: teamBPlayers, error: teamBError } = await supabase
             .from('team_players')
             .select('player_id')
             .eq('team_id', match.team_b_id)
 
+        if (teamBError) {
+            console.error('❌ Ошибка загрузки игроков команды Б:', teamBError)
+            return
+        }
+
         const teamAIds = teamAPlayers?.map(tp => tp.player_id) || []
         const teamBIds = teamBPlayers?.map(tp => tp.player_id) || []
 
+        console.log('👥 Команда А игроки:', teamAIds.length)
+        console.log('👥 Команда Б игроки:', teamBIds.length)
+
+        // 5. Считаем голы по командам
         let scoreA = 0, scoreB = 0
+
         goals?.forEach(g => {
             if (teamAIds.includes(g.player_id)) {
                 scoreA++
@@ -1047,43 +1104,120 @@ async function updateMatchScore(matchId) {
             }
         })
 
-        await supabase
+        console.log('⚽ Новый счет:', scoreA, ':', scoreB)
+
+        // 6. Обновляем счет в БД
+        const { error: updateError } = await supabase
             .from('matches')
             .update({ score_a: scoreA, score_b: scoreB })
             .eq('id', matchId)
 
+        if (updateError) {
+            console.error('❌ Ошибка обновления счета в БД:', updateError)
+            return
+        }
+
+        console.log('✅ Счет в БД обновлен')
+
+        // 7. Обновляем отображение на экране
         const displayA = document.getElementById('displayScoreA')
         const displayB = document.getElementById('displayScoreB')
-        if (displayA) displayA.textContent = scoreA
-        if (displayB) displayB.textContent = scoreB
+        
+        if (displayA) {
+            displayA.textContent = scoreA
+            console.log('🔄 Обновлен displayScoreA:', scoreA)
+        } else {
+            console.warn('⚠️ Элемент displayScoreA не найден')
+        }
+        
+        if (displayB) {
+            displayB.textContent = scoreB
+            console.log('🔄 Обновлен displayScoreB:', scoreB)
+        } else {
+            console.warn('⚠️ Элемент displayScoreB не найден')
+        }
+
+        // 8. Также обновляем счет в таблице матчей (если она открыта)
+        await refreshMatchInList(matchId, scoreA, scoreB)
+
+        console.log('✅ Счет обновлен полностью:', scoreA, ':', scoreB)
 
     } catch (error) {
-        console.error('Ошибка обновления счета:', error)
+        console.error('❌ Критическая ошибка в updateMatchScore:', error)
     }
 }
 
+// ================================================================
+// ОБНОВЛЕНИЕ СЧЕТА В СПИСКЕ МАТЧЕЙ
+// ================================================================
+
+async function refreshMatchInList(matchId, scoreA, scoreB) {
+    try {
+        // Обновляем отображение в списке матчей, если он открыт
+        const rows = document.querySelectorAll('#matchesContainer table tbody tr')
+        for (const row of rows) {
+            const editBtn = row.querySelector('button[onclick*="editMatch"]')
+            if (editBtn) {
+                const onclick = editBtn.getAttribute('onclick')
+                const matchIdFromAttr = onclick.match(/'([^']+)'/)?.[1]
+                if (matchIdFromAttr === matchId) {
+                    const scoreCell = row.querySelectorAll('td')[2]
+                    if (scoreCell) {
+                        scoreCell.textContent = `${scoreA} : ${scoreB}`
+                        console.log('🔄 Обновлен счет в списке матчей')
+                    }
+                    break
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Не удалось обновить счет в списке:', error)
+    }
+}
+
+// ================================================================
+// ДОБАВЛЕНИЕ ГОЛА (С АВТООБНОВЛЕНИЕМ СЧЕТА)
+// ================================================================
+
 window.addGoalToMatch = async function(matchId) {
-    const playerId = document.getElementById('goalPlayer').value
-    const assistId = document.getElementById('goalAssist').value
+    const playerSelect = document.getElementById('goalPlayer')
+    const assistSelect = document.getElementById('goalAssist')
+    
+    const playerId = playerSelect?.value
+    const assistId = assistSelect?.value
 
     if (!playerId) {
         alert('Выберите игрока, забившего гол')
         return
     }
 
+    console.log('🔄 Добавляем гол:', { matchId, playerId, assistId })
+
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('goals')
             .insert({ match_id: matchId, player_id: playerId, assist_id: assistId || null })
+            .select()
 
-        if (error) throw error
+        if (error) {
+            console.error('❌ Ошибка Supabase:', error)
+            alert('Ошибка: ' + error.message)
+            return
+        }
 
+        console.log('✅ Гол добавлен в БД:', data)
+
+        // Очищаем поля
+        if (playerSelect) playerSelect.value = ''
+        if (assistSelect) assistSelect.innerHTML = '<option value="">— Ассистент —</option>'
+
+        // Обновляем список голов и счет
         await loadMatchGoals(matchId)
-
-        document.getElementById('goalPlayer').value = ''
-        document.getElementById('goalAssist').innerHTML = '<option value="">— Ассистент —</option>'
+        
         alert('✅ Гол добавлен! Счет обновлен автоматически')
+        
     } catch (error) {
+        console.error('❌ Ошибка:', error)
         alert('❌ Ошибка: ' + error.message)
     }
 }
