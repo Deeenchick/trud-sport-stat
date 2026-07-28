@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>⚽ Админ-панель</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+</head>
+<body>
+    <div class="app">
+        <!-- Навигация админа -->
+        <nav class="navbar">
+            <button class="nav-btn active" data-tab="players">
+                <i class="fas fa-users"></i> Игроки
+            </button>
+            <button class="nav-btn" data-tab="tournaments">
+                <i class="fas fa-trophy"></i> Турниры
+            </button>
+            <button class="nav-btn" data-tab="matches">
+                <i class="fas fa-futbol"></i> Матчи
+            </button>
+            <a href="index.html" class="nav-btn" style="margin-left:auto;color:#ffd700;">
+                <i class="fas fa-eye"></i> На сайт
+            </a>
+        </nav>
+
+        <!-- Контент -->
+        <div class="tab-content active" id="tab-players">
+            <div class="section-title">
+                <i class="fas fa-users"></i> Управление игроками
+                <button class="btn-gold" onclick="showAddPlayer()">+ Добавить</button>
+            </div>
+            <div class="card" id="playersList">
+                <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-tournaments">
+            <div class="section-title">
+                <i class="fas fa-trophy"></i> Управление турнирами
+                <button class="btn-gold" onclick="showAddTournament()">+ Создать</button>
+            </div>
+            <div class="card" id="tournamentsList">
+                <div class="loading"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-matches">
+            <div class="section-title">
+                <i class="fas fa-futbol"></i> Управление матчами
+                <span class="section-sub" id="matchTournamentSelect">Выберите турнир</span>
+            </div>
+            <div class="card" id="matchesList">
+                <div class="empty">Выберите турнир для просмотра матчей</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно -->
+    <div id="modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;padding:20px;overflow-y:auto;">
+        <div style="max-width:600px;margin:40px auto;background:#161c24;border-radius:18px;padding:30px;border:1px solid rgba(255,215,0,0.1);">
+            <div class="flex-between">
+                <h3 id="modalTitle" style="color:#ffd700;">Новый игрок</h3>
+                <button onclick="closeModal()" style="background:none;border:none;color:#7a8399;font-size:24px;cursor:pointer;">✕</button>
+            </div>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <script type="module" src="js/admin.js"></script>
+</body>
+</html>
