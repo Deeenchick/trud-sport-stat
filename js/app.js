@@ -243,6 +243,31 @@ async function showTournamentDetail(tournamentId) {
 }
 
 // ================================================================
+// ЗАКРЫТЬ ДЕТАЛИ ТУРНИРА
+// ================================================================
+
+function closeTournamentDetail() {
+    const detailContainer = document.getElementById('tournamentDetail')
+    const container = document.getElementById('page-tournaments')
+
+    if (detailContainer) {
+        detailContainer.style.display = 'none'
+        detailContainer.innerHTML = ''
+    }
+
+    state.currentTournamentId = null
+
+    // Восстанавливаем список турниров
+    if (container && container.dataset.savedHTML) {
+        container.innerHTML = container.dataset.savedHTML
+        renderTournaments()
+    }
+}
+
+// Делаем функцию доступной глобально
+window.closeTournamentDetail = closeTournamentDetail
+
+// ================================================================
 // РЕНДЕРИНГ СТАТИСТИКИ
 // ================================================================
 
